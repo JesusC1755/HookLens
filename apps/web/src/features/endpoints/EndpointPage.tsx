@@ -1,7 +1,8 @@
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { CopyButton } from '../../components/CopyButton';
 import { Link } from '../../components/Link';
-import type { ApiError } from '../../lib/api';
+import { type ApiError, clearRequests, getEndpoint } from '../../lib/api';
 import { formatExpiry } from '../../lib/format';
 import { navigate } from '../../lib/router';
 import { forgetEndpoint, type StoredEndpoint, useStoredEndpoints } from '../../lib/storage';
@@ -9,7 +10,12 @@ import { useNow } from '../../lib/useNow';
 import { RequestDetail } from '../requests/RequestDetail';
 import { RequestList } from '../requests/RequestList';
 import { useRequestFeed } from '../requests/useRequestFeed';
+import { endpointKeys } from './queryKeys';
+import { ResponseSettingsDialog } from './ResponseSettingsDialog';
 import { StreamBadge } from './StreamBadge';
+
+const toolbarButton =
+  'rounded-md border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-50';
 
 export function EndpointPage({ slug }: { slug: string }) {
   const endpoint = useStoredEndpoints().find((entry) => entry.slug === slug);
@@ -24,12 +30,35 @@ export function EndpointPage({ slug }: { slug: string }) {
   return <EndpointWorkspace endpoint={endpoint} />;
 }
 
+interface Selection {
+  id: string;
+  /** Generación del feed en la que se eligió: al vaciar el endpoint, deja de valer. */
+  generation: number;
+}
+
 function EndpointWorkspace({ endpoint }: { endpoint: StoredEndpoint }) {
   const feed = useRequestFeed(endpoint);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const now = useNow();
+  const selectedId = selection?.generation === feed.generation ? selection.id : null;
+
+  const details = useQuery({
+    queryKey: endpointKeys.details(endpoint.slug),
+    queryFn: ({ signal }) => getEndpoint(endpoint.slug, endpoint.token, signal),
+  });
+  const clear = useMutation({
+    mutationFn: () => clearRequests(endpoint.slug, endpoint.token),
+    // El evento `cleared` del stream ya lo hace; esto cubre el caso de que esté desconectado.
+    onSuccess: feed.reset,
+  });
 
   if (feed.fatalError) return <FatalNotice error={feed.fatalError} slug={endpoint.slug} />;
+
+  const response = details.data?.response;
+  const setSelectedId = (id: string | null) => {
+    setSelection(id === null ? null : { id, generation: feed.generation });
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -39,10 +68,53 @@ function EndpointWorkspace({ endpoint }: { endpoint: StoredEndpoint }) {
         </code>
         <CopyButton value={endpoint.url} label="Copiar URL" />
         <StreamBadge {...feed.stream} />
-        <span className="ml-auto text-xs text-zinc-500">
-          {formatExpiry(endpoint.expiresAt, now)}
+        <span className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-zinc-500">{formatExpiry(endpoint.expiresAt, now)}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setSettingsOpen(true);
+            }}
+            className={toolbarButton}
+          >
+            Respuesta
+            {response && (
+              <span className="ml-1.5 font-mono text-zinc-400">
+                {response.status}
+                {response.delayMs > 0 && ` · ${response.delayMs} ms`}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            disabled={clear.isPending || feed.requests.length === 0}
+            onClick={() => {
+              if (
+                window.confirm('¿Borrar todas las requests de este endpoint? No se puede deshacer.')
+              ) {
+                clear.mutate();
+              }
+            }}
+            className={`${toolbarButton} hover:border-rose-700 hover:text-rose-200`}
+          >
+            {clear.isPending ? 'Vaciando…' : 'Vaciar'}
+          </button>
         </span>
+        {clear.isError && (
+          <p role="alert" className="w-full text-xs text-rose-300">
+            No se pudo vaciar: {clear.error.message}
+          </p>
+        )}
       </header>
+
+      {settingsOpen && (
+        <ResponseSettingsDialog
+          endpoint={endpoint}
+          onClose={() => {
+            setSettingsOpen(false);
+          }}
+        />
+      )}
 
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
         {/* En pantallas chicas se muestra la lista o el detalle, no ambos. */}
@@ -64,6 +136,7 @@ function EndpointWorkspace({ endpoint }: { endpoint: StoredEndpoint }) {
               key={selectedId}
               id={selectedId}
               token={endpoint.token}
+              endpointUrl={endpoint.url}
               onBack={() => {
                 setSelectedId(null);
               }}

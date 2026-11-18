@@ -31,3 +31,19 @@ export interface CreatedEndpoint {
   url: string;
   expiresAt: string;
 }
+
+/** Lo que el endpoint responde a quien le manda un webhook. */
+export interface ResponseConfig {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  delayMs: number;
+}
+
+export interface EndpointDetails {
+  slug: string;
+  url: string;
+  createdAt: string;
+  expiresAt: string;
+  response: ResponseConfig;
+}

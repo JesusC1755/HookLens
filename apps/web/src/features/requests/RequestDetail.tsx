@@ -1,20 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, type ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { CopyButton } from '../../components/CopyButton';
 import { getRequest } from '../../lib/api';
-import { decodeBody } from '../../lib/body';
+import { buildCurl } from '../../lib/curl';
 import { formatBytes, formatDateTime } from '../../lib/format';
-import type { MultiValueMap, RequestDetail as RequestDetailData } from '../../lib/types';
+import type { RequestDetail as RequestDetailData } from '../../lib/types';
+import { BodyViewer } from './BodyViewer';
 import { MethodBadge } from './MethodBadge';
+import { MultiValueTable } from './MultiValueTable';
 import { requestKeys } from './queryKeys';
 
 interface RequestDetailProps {
   id: string;
   token: string;
+  endpointUrl: string;
   onBack: () => void;
 }
 
-export function RequestDetail({ id, token, onBack }: RequestDetailProps) {
+export function RequestDetail({ id, token, endpointUrl, onBack }: RequestDetailProps) {
   const detail = useQuery({
     queryKey: requestKeys.detail(id),
     queryFn: ({ signal }) => getRequest(id, token, signal),
@@ -47,19 +50,28 @@ export function RequestDetail({ id, token, onBack }: RequestDetailProps) {
           </button>
         </div>
       ) : (
-        <RequestView request={detail.data} />
+        <RequestView request={detail.data} endpointUrl={endpointUrl} />
       )}
     </div>
   );
 }
 
-function RequestView({ request }: { request: RequestDetailData }) {
+function RequestView({
+  request,
+  endpointUrl,
+}: {
+  request: RequestDetailData;
+  endpointUrl: string;
+}) {
   const target = request.rawQuery === '' ? request.path : `${request.path}?${request.rawQuery}`;
+  const curl = useMemo(() => buildCurl(request, endpointUrl), [request, endpointUrl]);
+
   return (
     <article className="space-y-6 p-4 lg:p-6">
       <header className="flex items-center gap-3">
         <MethodBadge method={request.method} />
-        <h2 className="min-w-0 truncate font-mono text-sm text-zinc-100">{target}</h2>
+        <h2 className="min-w-0 flex-1 truncate font-mono text-sm text-zinc-100">{target}</h2>
+        <CopyButton value={curl} label="Copiar como cURL" />
       </header>
 
       <Section title="Resumen">
@@ -83,7 +95,7 @@ function RequestView({ request }: { request: RequestDetailData }) {
       )}
 
       <Section title="Body">
-        <BodyView body={request.body} />
+        <BodyViewer request={request} />
       </Section>
     </article>
   );
@@ -105,60 +117,4 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <dd className="min-w-0 font-mono break-all text-zinc-200">{children}</dd>
     </>
   );
-}
-
-function MultiValueTable({ values }: { values: MultiValueMap }) {
-  // JSONB no conserva el orden de las claves: se muestran ordenadas por nombre.
-  const rows = Object.entries(values)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .flatMap(([name, list]) =>
-      list.map((value, index) => ({ key: `${name}#${index}`, name, value })),
-    );
-
-  if (rows.length === 0) return <p className="text-sm text-zinc-500">Sin valores</p>;
-
-  return (
-    <table className="w-full table-fixed text-sm">
-      <tbody className="divide-y divide-zinc-800/80">
-        {rows.map((row) => (
-          <tr key={row.key}>
-            <th
-              scope="row"
-              className="w-2/5 py-1.5 pr-4 text-left align-top font-mono font-normal break-all text-zinc-400"
-            >
-              {row.name}
-            </th>
-            <td className="py-1.5 font-mono break-all text-zinc-200">{row.value}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function BodyView({ body }: { body: string | null }) {
-  const decoded = useMemo(() => decodeBody(body), [body]);
-
-  switch (decoded.kind) {
-    case 'empty':
-      return <p className="text-sm text-zinc-500">Sin body</p>;
-    case 'binary':
-      return (
-        <p className="text-sm text-zinc-400">
-          Contenido binario de {formatBytes(decoded.bytes.length)} (no es UTF-8 válido).
-        </p>
-      );
-    case 'text':
-      return (
-        <div className="relative rounded-md bg-zinc-900">
-          <div className="absolute top-2 right-2">
-            <CopyButton value={decoded.text} />
-          </div>
-          {/* Texto plano: React lo escapa, un body con HTML nunca se interpreta. */}
-          <pre className="max-h-[60vh] overflow-auto p-3 pr-20 font-mono text-xs whitespace-pre-wrap break-all text-zinc-200">
-            {decoded.text}
-          </pre>
-        </div>
-      );
-  }
 }

@@ -1,5 +1,11 @@
 import { API_URL } from './config';
-import type { CreatedEndpoint, RequestDetail, RequestPage } from './types';
+import type {
+  CreatedEndpoint,
+  EndpointDetails,
+  RequestDetail,
+  RequestPage,
+  ResponseConfig,
+} from './types';
 
 export const PAGE_SIZE = 50;
 
@@ -47,17 +53,23 @@ export function bearer(token: string): Record<string, string> {
 }
 
 interface CallOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   token?: string | undefined;
   signal?: AbortSignal | undefined;
+  json?: unknown;
 }
 
-async function call<T>(path: string, { method = 'GET', token, signal }: CallOptions = {}) {
+async function call<T>(path: string, { method = 'GET', token, signal, json }: CallOptions = {}) {
+  const headers: Record<string, string> = token === undefined ? {} : bearer(token);
+  // Sin body no se manda content-type: Fastify rechaza un JSON vacío.
+  if (json !== undefined) headers['content-type'] = 'application/json';
+
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
-      headers: token === undefined ? {} : bearer(token),
+      headers,
+      body: json === undefined ? null : JSON.stringify(json),
       signal: signal ?? null,
     });
   } catch (err) {
@@ -73,6 +85,24 @@ export function createEndpoint(): Promise<CreatedEndpoint> {
   return call<CreatedEndpoint>('/api/endpoints', { method: 'POST' });
 }
 
+const endpointPath = (slug: string) => `/api/endpoints/${encodeURIComponent(slug)}`;
+
+export function getEndpoint(slug: string, token: string, signal?: AbortSignal) {
+  return call<EndpointDetails>(endpointPath(slug), { token, signal });
+}
+
+export function updateResponse(slug: string, token: string, config: ResponseConfig) {
+  return call<ResponseConfig>(`${endpointPath(slug)}/response`, {
+    method: 'PUT',
+    token,
+    json: config,
+  });
+}
+
+export function clearRequests(slug: string, token: string) {
+  return call<{ deleted: number }>(`${endpointPath(slug)}/requests`, { method: 'DELETE', token });
+}
+
 export function listRequests(
   slug: string,
   token: string,
@@ -81,10 +111,10 @@ export function listRequests(
 ): Promise<RequestPage> {
   const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
   if (cursor !== null) params.set('cursor', cursor);
-  return call<RequestPage>(
-    `/api/endpoints/${encodeURIComponent(slug)}/requests?${params.toString()}`,
-    { token, signal },
-  );
+  return call<RequestPage>(`${endpointPath(slug)}/requests?${params.toString()}`, {
+    token,
+    signal,
+  });
 }
 
 export function getRequest(id: string, token: string, signal?: AbortSignal) {
@@ -92,5 +122,5 @@ export function getRequest(id: string, token: string, signal?: AbortSignal) {
 }
 
 export function streamUrl(slug: string): string {
-  return `${API_URL}/api/endpoints/${encodeURIComponent(slug)}/stream`;
+  return `${API_URL}${endpointPath(slug)}/stream`;
 }

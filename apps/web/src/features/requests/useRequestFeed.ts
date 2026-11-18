@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type ApiError, listRequests, streamUrl } from '../../lib/api';
 import { openEventStream, type StreamStatus } from '../../lib/sse';
 import type { StoredEndpoint } from '../../lib/storage';
@@ -41,6 +41,15 @@ export function useRequestFeed({ slug, token }: StoredEndpoint) {
   const [stream, setStream] = useState<StreamState>({ status: 'connecting', reason: null });
   const [subscribed, setSubscribed] = useState(false);
   const [fatalError, setFatalError] = useState<ApiError | null>(null);
+  // Cambia cada vez que se vacía el endpoint: invalida la selección y lo que había en pantalla.
+  const [generation, setGeneration] = useState(0);
+
+  /** Deja la lista como recién abierta. Lo dispara el evento `cleared` (de esta pestaña o de otra). */
+  const reset = useCallback(() => {
+    setLive([]);
+    setGeneration((current) => current + 1);
+    void queryClient.resetQueries({ queryKey: requestKeys.list(slug) });
+  }, [queryClient, slug]);
 
   const list = useInfiniteQuery({
     queryKey: requestKeys.list(slug),
@@ -63,6 +72,10 @@ export function useRequestFeed({ slug, token }: StoredEndpoint) {
             void queryClient.invalidateQueries({ queryKey: requestKeys.list(slug) });
             return;
           }
+          if (event.event === 'cleared') {
+            reset();
+            return;
+          }
           if (event.event !== 'request') return;
           const summary = parseSummary(event.data);
           if (summary) {
@@ -76,7 +89,7 @@ export function useRequestFeed({ slug, token }: StoredEndpoint) {
           setFatalError(error);
         },
       }),
-    [queryClient, slug, token],
+    [queryClient, slug, token, reset],
   );
 
   const pages = list.data?.pages;
@@ -85,7 +98,7 @@ export function useRequestFeed({ slug, token }: StoredEndpoint) {
     [live, pages],
   );
 
-  return { requests, list, stream, fatalError, subscribed };
+  return { requests, list, stream, fatalError, subscribed, generation, reset };
 }
 
 export type RequestFeed = ReturnType<typeof useRequestFeed>;
