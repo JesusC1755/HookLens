@@ -5,6 +5,8 @@ import { registerErrorHandling } from './lib/errors.js';
 import { createMemoryPubSub } from './lib/pubsub.js';
 import { endpointRoutes } from './modules/endpoints/routes.js';
 import { ingestRoutes } from './modules/ingest/routes.js';
+import { replayRoutes } from './modules/replays/routes.js';
+import { type AddressPolicy, isPublicAddress } from './modules/replays/ssrf.js';
 import { requestRoutes } from './modules/requests/routes.js';
 import type { EndpointBus, EndpointEvent } from './modules/requests/events.js';
 import { streamRoutes } from './modules/stream/routes.js';
@@ -22,8 +24,15 @@ export interface AppOptions {
   corsOrigins?: string[];
   /** Por defecto, en memoria. Se inyecta para escalar (Redis) o en los tests. */
   bus?: EndpointBus;
+  /**
+   * Solo para tests: permite apuntar el replay a un servidor local. No se expone
+   * por variable de entorno, así que en producción no hay forma de desactivar la protección SSRF.
+   */
+  replay?: { isAllowedAddress?: AddressPolicy; timeoutMs?: number };
   logger?: FastifyServerOptions['logger'];
 }
+
+const REPLAY_TIMEOUT_MS = 10_000;
 
 /** Construye la app sin escuchar en un puerto: los tests la usan con app.inject(). */
 export function buildApp({
@@ -32,6 +41,7 @@ export function buildApp({
   trustProxy = [],
   corsOrigins = [],
   bus,
+  replay = {},
   logger = false,
 }: AppOptions): FastifyInstance {
   const app = Fastify({
@@ -62,6 +72,11 @@ export function buildApp({
     await api.register(endpointRoutes, { db, publicBaseUrl });
     await api.register(requestRoutes, { db, bus: endpointBus });
     await api.register(streamRoutes, { db, bus: endpointBus });
+    await api.register(replayRoutes, {
+      db,
+      isAllowedAddress: replay.isAllowedAddress ?? isPublicAddress,
+      timeoutMs: replay.timeoutMs ?? REPLAY_TIMEOUT_MS,
+    });
   });
 
   void app.register(ingestRoutes, { db, bus: endpointBus });
