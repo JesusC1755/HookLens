@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { newHeaderRow, parseDraft, type ResponseDraft, toDraft } from './responseDraft';
+import { newHeaderRow } from '../../lib/headers';
+import { parseDraft, type ResponseDraft, toDraft } from './responseDraft';
 
 function draft(overrides: Partial<ResponseDraft> = {}): ResponseDraft {
   return { status: '200', delayMs: '0', body: '', headers: [], ...overrides };

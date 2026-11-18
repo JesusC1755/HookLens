@@ -1,28 +1,6 @@
 import { type Bytes, decodeBody } from './body';
+import { isForwardableHeader } from './headers';
 import type { RequestDetail } from './types';
-
-// Headers que curl calcula solo o que agregó la infraestructura en el camino:
-// copiarlos haría que la request reproducida no coincida (o que curl falle).
-const SKIPPED_HEADERS = new Set([
-  'accept-encoding',
-  'connection',
-  'content-length',
-  'expect',
-  'forwarded',
-  'host',
-  'keep-alive',
-  'proxy-connection',
-  'te',
-  'transfer-encoding',
-  'upgrade',
-  'via',
-  'x-real-ip',
-]);
-const SKIPPED_PREFIXES = ['x-forwarded-'];
-
-function isSkipped(name: string): boolean {
-  return SKIPPED_HEADERS.has(name) || SKIPPED_PREFIXES.some((prefix) => name.startsWith(prefix));
-}
 
 /**
  * Comillas simples de POSIX: dentro no se expande nada ($, `, \), solo hay que
@@ -63,7 +41,7 @@ export function buildCurl(request: RequestDetail, endpointUrl: string): string {
   }
 
   for (const [name, values] of Object.entries(request.headers)) {
-    if (isSkipped(name)) continue;
+    if (!isForwardableHeader(name)) continue;
     for (const value of values) {
       // "-H 'name:'" le dice a curl que quite el header; "name;" lo manda vacío.
       const header = value === '' ? `${name};` : `${name}: ${value}`;

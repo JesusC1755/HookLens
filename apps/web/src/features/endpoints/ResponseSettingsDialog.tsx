@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, type SubmitEvent, useEffect, useId, useRef, useState } from 'react';
+import { type SubmitEvent, useEffect, useId, useRef, useState } from 'react';
+import { Field, HeadersEditor, inputClass } from '../../components/form';
 import { getEndpoint, updateResponse } from '../../lib/api';
 import type { StoredEndpoint } from '../../lib/storage';
 import type { EndpointDetails, ResponseConfig } from '../../lib/types';
 import { endpointKeys } from './queryKeys';
 import {
   type DraftErrors,
-  type HeaderRow,
-  newHeaderRow,
   parseDraft,
   RESPONSE_LIMITS,
   type ResponseDraft,
@@ -105,13 +104,6 @@ function ResponseForm({ endpoint, initial, onDone }: ResponseFormProps) {
     setDraft((current) => ({ ...current, ...patch }));
   }
 
-  function updateRow(id: number, patch: Partial<Omit<HeaderRow, 'id'>>) {
-    setDraft((current) => ({
-      ...current,
-      headers: current.headers.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-    }));
-  }
-
   return (
     <form noValidate onSubmit={submit} className="mt-6 space-y-5">
       <div className="grid grid-cols-2 gap-4">
@@ -151,55 +143,14 @@ function ResponseForm({ endpoint, initial, onDone }: ResponseFormProps) {
         </Field>
       </div>
 
-      <fieldset>
-        <legend className="text-sm font-medium text-zinc-200">Headers</legend>
-        <div className="mt-2 space-y-2">
-          {draft.headers.map((row) => (
-            <div key={row.id} className="flex gap-2">
-              <input
-                aria-label="Nombre del header"
-                placeholder="x-mi-header"
-                value={row.name}
-                onChange={(event) => {
-                  updateRow(row.id, { name: event.target.value });
-                }}
-                className={`${inputClass} w-2/5`}
-              />
-              <input
-                aria-label={`Valor de ${row.name === '' ? 'header' : row.name}`}
-                placeholder="valor"
-                value={row.value}
-                onChange={(event) => {
-                  updateRow(row.id, { value: event.target.value });
-                }}
-                className={`${inputClass} flex-1`}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  update({ headers: draft.headers.filter((other) => other.id !== row.id) });
-                }}
-                className="px-2 text-sm text-zinc-500 hover:text-rose-300"
-              >
-                Quitar
-              </button>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          disabled={draft.headers.length >= RESPONSE_LIMITS.maxHeaders}
-          onClick={() => {
-            update({ headers: [...draft.headers, newHeaderRow()] });
-          }}
-          className="mt-2 text-sm text-emerald-300 hover:text-emerald-200 disabled:opacity-50"
-        >
-          + Agregar header
-        </button>
-        {errors.headers !== undefined && (
-          <p className="mt-1 text-xs text-rose-300">{errors.headers}</p>
-        )}
-      </fieldset>
+      <HeadersEditor
+        rows={draft.headers}
+        onChange={(headers) => {
+          update({ headers });
+        }}
+        maxRows={RESPONSE_LIMITS.maxHeaders}
+        error={errors.headers}
+      />
 
       <Field id={ids.body} label="Body" error={errors.body}>
         <textarea
@@ -238,32 +189,5 @@ function ResponseForm({ endpoint, initial, onDone }: ResponseFormProps) {
         </button>
       </div>
     </form>
-  );
-}
-
-const inputClass =
-  'w-full rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 outline-none focus:border-emerald-500 aria-invalid:border-rose-500';
-
-interface FieldProps {
-  id: string;
-  label: string;
-  hint?: string;
-  error: string | undefined;
-  children: ReactNode;
-}
-
-function Field({ id, label, hint, error, children }: FieldProps) {
-  return (
-    <div>
-      <label htmlFor={id} className="text-sm font-medium text-zinc-200">
-        {label}
-      </label>
-      <div className="mt-1">{children}</div>
-      {error !== undefined ? (
-        <p className="mt-1 text-xs text-rose-300">{error}</p>
-      ) : (
-        hint !== undefined && <p className="mt-1 text-xs text-zinc-500">{hint}</p>
-      )}
-    </div>
   );
 }

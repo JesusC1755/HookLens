@@ -1,3 +1,4 @@
+import { HEADER_NAME_PATTERN, type HeaderRow, newHeaderRow } from '../../lib/headers';
 import type { ResponseConfig } from '../../lib/types';
 
 // Mismas reglas que el API (apps/api/src/modules/endpoints/response-config.ts): validar
@@ -26,14 +27,7 @@ const BLOCKED_HEADERS = new Set([
   'upgrade',
   'x-content-type-options',
 ]);
-const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const HEADER_VALUE = /^[\t\x20-\x7e]*$/;
-
-export interface HeaderRow {
-  id: number;
-  name: string;
-  value: string;
-}
 
 /** Lo que edita el formulario: los números como texto, tal cual los escribe el usuario. */
 export interface ResponseDraft {
@@ -45,13 +39,6 @@ export interface ResponseDraft {
 
 export type DraftField = 'status' | 'delayMs' | 'body' | 'headers';
 export type DraftErrors = Partial<Record<DraftField, string>>;
-
-let lastRowId = 0;
-
-export function newHeaderRow(name = '', value = ''): HeaderRow {
-  lastRowId += 1;
-  return { id: lastRowId, name, value };
-}
 
 export function toDraft(config: ResponseConfig): ResponseDraft {
   return {
@@ -74,7 +61,7 @@ function headerError(rows: readonly HeaderRow[]): string | null {
   for (const { name: rawName, value } of rows) {
     const name = rawName.trim().toLowerCase();
     if (name === '') return 'Hay un header sin nombre';
-    if (name.length > RESPONSE_LIMITS.maxHeaderNameLength || !HEADER_NAME.test(name)) {
+    if (name.length > RESPONSE_LIMITS.maxHeaderNameLength || !HEADER_NAME_PATTERN.test(name)) {
       return `"${rawName}" no es un nombre de header válido`;
     }
     if (BLOCKED_HEADERS.has(name)) return `El header ${name} no se puede configurar`;
