@@ -3,17 +3,23 @@ import type { Database } from '../../db/client.js';
 import { decodeCursor } from '../../lib/cursor.js';
 import { AppError } from '../../lib/errors.js';
 import { authorizeEndpoint, requireBearerToken, tokenMatchesHash } from '../endpoints/auth.js';
+import type { EndpointBus } from './events.js';
 import { requestDetailSchema, requestSummarySchema } from './serializers.js';
-import { findRequestWithOwner, listRequests } from './service.js';
+import { deleteRequests, findRequestWithOwner, listRequests } from './service.js';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 
 interface RequestRoutesOptions {
   db: Database;
+  bus: Pick<EndpointBus, 'publish'>;
 }
 
-export const requestRoutes: FastifyPluginCallback<RequestRoutesOptions> = (app, { db }, done) => {
+export const requestRoutes: FastifyPluginCallback<RequestRoutesOptions> = (
+  app,
+  { db, bus },
+  done,
+) => {
   app.get<{
     Params: { slug: string };
     Querystring: { cursor?: string; limit: number };
@@ -66,6 +72,38 @@ export const requestRoutes: FastifyPluginCallback<RequestRoutesOptions> = (app, 
       }
 
       return listRequests(db, endpoint.id, { cursor, limit });
+    },
+  );
+
+  app.delete<{ Params: { slug: string } }>(
+    '/api/endpoints/:slug/requests',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: { slug: { type: 'string', maxLength: 64 } },
+          required: ['slug'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: { deleted: { type: 'integer' } },
+            required: ['deleted'],
+            additionalProperties: false,
+          },
+        },
+      },
+    },
+    async (request) => {
+      const endpoint = await authorizeEndpoint(
+        db,
+        request.params.slug,
+        request.headers.authorization,
+      );
+      const deleted = await deleteRequests(db, endpoint.id);
+      // Las demás pestañas abiertas vacían su lista sin recargar.
+      bus.publish(endpoint.slug, { type: 'cleared' });
+      return { deleted };
     },
   );
 

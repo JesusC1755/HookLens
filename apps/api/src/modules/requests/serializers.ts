@@ -1,6 +1,5 @@
 import type { MultiValueMap } from '../../db/types.js';
 import { requests } from '../../db/schema.js';
-import type { PubSub } from '../../lib/pubsub.js';
 
 /**
  * Lo que viaja en la lista y en el stream: sin body ni headers. Un body puede pesar
@@ -23,8 +22,6 @@ export interface RequestDetail extends RequestSummary {
   /** Body crudo en base64: JSON no transporta bytes y el front lo formatea según el content-type. */
   body: string | null;
 }
-
-export type RequestBus = PubSub<RequestSummary>;
 
 export const summaryColumns = {
   id: requests.id,

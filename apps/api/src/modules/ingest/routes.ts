@@ -4,16 +4,28 @@ import type { Database } from '../../db/client.js';
 import { AppError } from '../../lib/errors.js';
 import { SLUG_PATTERN } from '../../lib/tokens.js';
 import { findEndpointForIngest } from '../endpoints/service.js';
-import type { RequestBus } from '../requests/serializers.js';
+import type { EndpointBus } from '../requests/events.js';
 import { normalizeHeaders, normalizeIp, parseIngestUrl } from './normalize.js';
 import { recordRequest } from './service.js';
 
 export const INGEST_BODY_LIMIT_BYTES = 1024 * 1024;
 
+/**
+ * Cualquiera puede crear un endpoint que responda HTML. Sin esto, la URL del webhook
+ * serviría una página con scripts en el dominio del API (phishing, XSS alojado):
+ * `sandbox` la aísla en un origen opaco y sin scripts, `nosniff` evita que el navegador
+ * reinterprete el content-type. El usuario no puede sobrescribirlos (BLOCKED_RESPONSE_HEADERS).
+ */
+const INGEST_SECURITY_HEADERS = {
+  'content-security-policy': 'sandbox',
+  'x-content-type-options': 'nosniff',
+};
+const DEFAULT_RESPONSE_CONTENT_TYPE = 'text/plain; charset=utf-8';
+
 interface IngestRoutesOptions {
   db: Database;
   /** La ingesta solo publica: no sabe quién escucha (SSE, CLI…). */
-  bus: Pick<RequestBus, 'publish'>;
+  bus: Pick<EndpointBus, 'publish'>;
 }
 
 type IngestRequest = FastifyRequest<{ Params: { slug: string } }>;
@@ -68,11 +80,20 @@ export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (
       ip: normalizeIp(request.ip),
     });
     // Se publica después del insert: quien reciba el evento ya puede pedir el detalle.
-    bus.publish(slug, summary);
+    bus.publish(slug, { type: 'request', request: summary });
 
     if (endpoint.respDelayMs > 0) await sleep(endpoint.respDelayMs);
 
-    return reply.code(endpoint.respStatus).headers(endpoint.respHeaders).send(endpoint.respBody);
+    // Buffer y no string: con un string Fastify le agrega "; charset=utf-8" al
+    // content-type configurado, y la respuesta debe salir tal cual se definió.
+    return reply
+      .code(endpoint.respStatus)
+      .headers({
+        'content-type': DEFAULT_RESPONSE_CONTENT_TYPE,
+        ...endpoint.respHeaders,
+        ...INGEST_SECURITY_HEADERS,
+      })
+      .send(Buffer.from(endpoint.respBody, 'utf8'));
   };
 
   const routeOptions = { bodyLimit: INGEST_BODY_LIMIT_BYTES };

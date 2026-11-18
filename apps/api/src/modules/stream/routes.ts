@@ -2,7 +2,7 @@ import type { FastifyPluginCallback } from 'fastify';
 import type { Database } from '../../db/client.js';
 import { AppError } from '../../lib/errors.js';
 import { authorizeEndpoint } from '../endpoints/auth.js';
-import type { RequestBus, RequestSummary } from '../requests/serializers.js';
+import type { EndpointBus, EndpointEvent } from '../requests/events.js';
 
 // Por debajo del timeout de inactividad típico de proxies y balanceadores (~60 s).
 const HEARTBEAT_INTERVAL_MS = 25_000;
@@ -17,7 +17,16 @@ const MAX_BUFFERED_BYTES = 1024 * 1024;
 
 interface StreamRoutesOptions {
   db: Database;
-  bus: RequestBus;
+  bus: EndpointBus;
+}
+
+function toSseMessage(event: EndpointEvent): string {
+  switch (event.type) {
+    case 'request':
+      return formatEvent('request', event.request, event.request.id);
+    case 'cleared':
+      return formatEvent('cleared', {});
+  }
 }
 
 function formatEvent(event: string, data: unknown, id?: string): string {
@@ -81,8 +90,8 @@ export const streamRoutes: FastifyPluginCallback<StreamRoutesOptions> = (
 
       let closed = false;
 
-      const unsubscribe = bus.subscribe(endpoint.slug, (summary: RequestSummary) => {
-        write(formatEvent('request', summary, summary.id));
+      const unsubscribe = bus.subscribe(endpoint.slug, (event) => {
+        write(toSseMessage(event));
       });
       const heartbeat = setInterval(() => {
         write(': ping\n\n');

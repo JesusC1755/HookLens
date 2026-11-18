@@ -6,7 +6,7 @@ import { createMemoryPubSub } from './lib/pubsub.js';
 import { endpointRoutes } from './modules/endpoints/routes.js';
 import { ingestRoutes } from './modules/ingest/routes.js';
 import { requestRoutes } from './modules/requests/routes.js';
-import type { RequestBus, RequestSummary } from './modules/requests/serializers.js';
+import type { EndpointBus, EndpointEvent } from './modules/requests/events.js';
 import { streamRoutes } from './modules/stream/routes.js';
 import { healthRoutes } from './routes/health.js';
 
@@ -21,7 +21,7 @@ export interface AppOptions {
   /** Orígenes del front autorizados por CORS en /api. */
   corsOrigins?: string[];
   /** Por defecto, en memoria. Se inyecta para escalar (Redis) o en los tests. */
-  bus?: RequestBus;
+  bus?: EndpointBus;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -40,10 +40,10 @@ export function buildApp({
     trustProxy: trustProxy.length > 0 ? trustProxy : false,
   });
 
-  const requestBus =
+  const endpointBus =
     bus ??
-    createMemoryPubSub<RequestSummary>((err) => {
-      app.log.error({ err }, 'un suscriptor del bus de requests falló');
+    createMemoryPubSub<EndpointEvent>((err) => {
+      app.log.error({ err }, 'un suscriptor del bus de eventos falló');
     });
 
   registerErrorHandling(app);
@@ -55,16 +55,16 @@ export function buildApp({
   void app.register(async (api) => {
     await api.register(cors, {
       origin: corsOrigins.length > 0 ? corsOrigins : false,
-      methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
       allowedHeaders: ['authorization', 'content-type'],
       maxAge: 600,
     });
     await api.register(endpointRoutes, { db, publicBaseUrl });
-    await api.register(requestRoutes, { db });
-    await api.register(streamRoutes, { db, bus: requestBus });
+    await api.register(requestRoutes, { db, bus: endpointBus });
+    await api.register(streamRoutes, { db, bus: endpointBus });
   });
 
-  void app.register(ingestRoutes, { db, bus: requestBus });
+  void app.register(ingestRoutes, { db, bus: endpointBus });
 
   return app;
 }

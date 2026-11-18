@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createMemoryPubSub } from '../src/lib/pubsub.js';
+import type { EndpointEvent } from '../src/modules/requests/events.js';
 import type { RequestSummary } from '../src/modules/requests/serializers.js';
 import { MAX_STREAMS_PER_ENDPOINT } from '../src/modules/stream/routes.js';
 import { buildTestApp, createEndpoint, TEST_WEB_ORIGIN, type TestEndpoint } from './helpers/app.js';
@@ -10,7 +11,7 @@ import { openSseReader, waitFor } from './helpers/sse.js';
 // El stream se prueba sobre un socket real: inject() espera a que la respuesta
 // termine, y un stream SSE no termina.
 const handle = createTestDb();
-const bus = createMemoryPubSub<RequestSummary>();
+const bus = createMemoryPubSub<EndpointEvent>();
 let app: FastifyInstance;
 let baseUrl: string;
 let owner: TestEndpoint;
@@ -100,6 +101,18 @@ describe('GET /api/endpoints/:slug/stream', () => {
     await ingest(owner.slug, '/propia');
 
     expect(JSON.parse((await events.next()).data)).toMatchObject({ path: '/propia' });
+  });
+
+  it('avisa con `cleared` cuando se vacían las requests del endpoint', async () => {
+    const events = await connect(owner);
+
+    const res = await fetch(`${baseUrl}/api/endpoints/${owner.slug}/requests`, {
+      method: 'DELETE',
+      headers: owner.auth,
+    });
+
+    expect(res.status).toBe(200);
+    expect(await events.next()).toMatchObject({ event: 'cleared', data: '{}' });
   });
 
   it('al desconectarse el cliente se libera la suscripción', async () => {

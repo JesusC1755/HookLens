@@ -52,6 +52,12 @@ export async function listRequests(
   };
 }
 
+/** Borra todas las requests del endpoint (sus replays caen por ON DELETE CASCADE). */
+export async function deleteRequests(db: Database, endpointId: string): Promise<number> {
+  const result = await db.delete(requests).where(eq(requests.endpointId, endpointId));
+  return result.rowCount ?? 0;
+}
+
 export interface RequestWithOwner {
   request: RequestDetail;
   ownerTokenHash: string;

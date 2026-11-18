@@ -140,6 +140,50 @@ describe('GET /api/endpoints/:slug/requests', () => {
   });
 });
 
+describe('DELETE /api/endpoints/:slug/requests', () => {
+  function clear(endpoint: TestEndpoint) {
+    return app.inject({
+      method: 'DELETE',
+      url: `/api/endpoints/${endpoint.slug}/requests`,
+      headers: endpoint.auth,
+    });
+  }
+
+  it('vacía las requests del endpoint y dice cuántas borró', async () => {
+    await ingest(owner.slug);
+    await ingest(owner.slug);
+
+    const res = await clear(owner);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ deleted: 2 });
+    expect((await listPage(owner)).json<Page>().items).toHaveLength(0);
+  });
+
+  it('no toca las requests de otros endpoints', async () => {
+    const other = await createEndpoint(app);
+    await ingest(other.slug);
+
+    await clear(owner);
+
+    expect((await listPage(other)).json<Page>().items).toHaveLength(1);
+  });
+
+  it('responde 403 con el token de otro endpoint, sin borrar nada', async () => {
+    await ingest(owner.slug);
+    const intruder = await createEndpoint(app);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/endpoints/${owner.slug}/requests`,
+      headers: intruder.auth,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect((await listPage(owner)).json<Page>().items).toHaveLength(1);
+  });
+});
+
 describe('autorización de la API de gestión', () => {
   it('responde 401 sin token', async () => {
     const res = await app.inject({ method: 'GET', url: `/api/endpoints/${owner.slug}/requests` });
