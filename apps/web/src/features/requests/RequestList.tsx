@@ -1,0 +1,119 @@
+import type { ReactNode } from 'react';
+import { CopyButton } from '../../components/CopyButton';
+import { formatBytes, formatDateTime, formatTime } from '../../lib/format';
+import { MethodBadge } from './MethodBadge';
+import type { RequestFeed } from './useRequestFeed';
+
+interface RequestListProps {
+  feed: RequestFeed;
+  endpointUrl: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}
+
+export function RequestList({ feed, endpointUrl, selectedId, onSelect }: RequestListProps) {
+  const { requests, list, subscribed } = feed;
+
+  if (requests.length === 0) {
+    if (!subscribed || list.isPending) return <ListMessage>Conectando…</ListMessage>;
+    if (list.isError) return <ListError message={list.error.message} onRetry={list.refetch} />;
+    return <WaitingForRequests endpointUrl={endpointUrl} />;
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <ul className="divide-y divide-zinc-800/80">
+        {requests.map((request) => {
+          const selected = request.id === selectedId;
+          return (
+            <li key={request.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelect(request.id);
+                }}
+                aria-current={selected ? 'true' : undefined}
+                className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${
+                  selected ? 'bg-zinc-800/80' : 'hover:bg-zinc-900'
+                }`}
+              >
+                <MethodBadge method={request.method} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-sm text-zinc-200">
+                    {request.path}
+                    {request.rawQuery !== '' && (
+                      <span className="text-zinc-500">?{request.rawQuery}</span>
+                    )}
+                  </span>
+                  <span className="block text-xs text-zinc-500">
+                    <time dateTime={request.receivedAt} title={formatDateTime(request.receivedAt)}>
+                      {formatTime(request.receivedAt)}
+                    </time>
+                    {' · '}
+                    {formatBytes(request.sizeBytes)}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {list.isError && <ListError message={list.error.message} onRetry={list.refetch} />}
+      {list.hasNextPage && (
+        <div className="p-3">
+          <button
+            type="button"
+            disabled={list.isFetchingNextPage}
+            onClick={() => {
+              void list.fetchNextPage();
+            }}
+            className="w-full rounded-md border border-zinc-800 py-2 text-sm text-zinc-300 transition hover:border-zinc-600 disabled:opacity-50"
+          >
+            {list.isFetchingNextPage ? 'Cargando…' : 'Cargar anteriores'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ListMessage({ children }: { children: ReactNode }) {
+  return <p className="p-6 text-sm text-zinc-500">{children}</p>;
+}
+
+function ListError({ message, onRetry }: { message: string; onRetry: () => Promise<unknown> }) {
+  return (
+    <div
+      role="alert"
+      className="m-3 rounded-md border border-rose-900/60 bg-rose-950/40 p-3 text-sm"
+    >
+      <p className="text-rose-200">No se pudo cargar la lista: {message}</p>
+      <button
+        type="button"
+        onClick={() => {
+          void onRetry();
+        }}
+        className="mt-2 text-rose-300 underline underline-offset-2 hover:text-rose-100"
+      >
+        Reintentar
+      </button>
+    </div>
+  );
+}
+
+function WaitingForRequests({ endpointUrl }: { endpointUrl: string }) {
+  const example = `curl -X POST '${endpointUrl}' -H 'content-type: application/json' -d '{"hola":"mundo"}'`;
+  return (
+    <div className="p-6">
+      <p className="text-sm font-medium text-zinc-200">Esperando requests…</p>
+      <p className="mt-1 text-sm text-zinc-500">
+        Configura esta URL como webhook en cualquier proveedor, o prueba con:
+      </p>
+      <div className="mt-3 flex items-start gap-2 rounded-md bg-zinc-900 p-3">
+        <code className="min-w-0 flex-1 font-mono text-xs break-all text-zinc-300">{example}</code>
+        <CopyButton value={example} />
+      </div>
+    </div>
+  );
+}

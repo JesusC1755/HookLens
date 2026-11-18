@@ -1,0 +1,126 @@
+import { type ReactNode, useState } from 'react';
+import { CopyButton } from '../../components/CopyButton';
+import { Link } from '../../components/Link';
+import type { ApiError } from '../../lib/api';
+import { formatExpiry } from '../../lib/format';
+import { navigate } from '../../lib/router';
+import { forgetEndpoint, type StoredEndpoint, useStoredEndpoints } from '../../lib/storage';
+import { useNow } from '../../lib/useNow';
+import { RequestDetail } from '../requests/RequestDetail';
+import { RequestList } from '../requests/RequestList';
+import { useRequestFeed } from '../requests/useRequestFeed';
+import { StreamBadge } from './StreamBadge';
+
+export function EndpointPage({ slug }: { slug: string }) {
+  const endpoint = useStoredEndpoints().find((entry) => entry.slug === slug);
+
+  if (!endpoint) {
+    return (
+      <Notice title="Este navegador no tiene acceso a este endpoint">
+        El token de un endpoint solo se guarda en el navegador donde se creó.
+      </Notice>
+    );
+  }
+  return <EndpointWorkspace endpoint={endpoint} />;
+}
+
+function EndpointWorkspace({ endpoint }: { endpoint: StoredEndpoint }) {
+  const feed = useRequestFeed(endpoint);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const now = useNow();
+
+  if (feed.fatalError) return <FatalNotice error={feed.fatalError} slug={endpoint.slug} />;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 py-3">
+        <code className="min-w-0 truncate rounded bg-zinc-900 px-2 py-1 font-mono text-sm text-zinc-100">
+          {endpoint.url}
+        </code>
+        <CopyButton value={endpoint.url} label="Copiar URL" />
+        <StreamBadge {...feed.stream} />
+        <span className="ml-auto text-xs text-zinc-500">
+          {formatExpiry(endpoint.expiresAt, now)}
+        </span>
+      </header>
+
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
+        {/* En pantallas chicas se muestra la lista o el detalle, no ambos. */}
+        <aside
+          className={`min-h-0 flex-col border-zinc-800 lg:flex lg:border-r ${selectedId === null ? 'flex' : 'hidden'}`}
+        >
+          <RequestList
+            feed={feed}
+            endpointUrl={endpoint.url}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        </aside>
+        <section className={`min-h-0 flex-col lg:flex ${selectedId === null ? 'hidden' : 'flex'}`}>
+          {selectedId === null ? (
+            <p className="p-6 text-sm text-zinc-500">Selecciona una request para ver el detalle.</p>
+          ) : (
+            <RequestDetail
+              key={selectedId}
+              id={selectedId}
+              token={endpoint.token}
+              onBack={() => {
+                setSelectedId(null);
+              }}
+            />
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+const FATAL_MESSAGES: Record<number, { title: string; body: string }> = {
+  401: {
+    title: 'El token guardado no es válido',
+    body: 'Este navegador tiene un token que el servidor no acepta para este endpoint.',
+  },
+  403: {
+    title: 'El token guardado no es válido',
+    body: 'Este navegador tiene un token que el servidor no acepta para este endpoint.',
+  },
+  404: { title: 'El endpoint ya no existe', body: 'Fue eliminado del servidor.' },
+  410: {
+    title: 'Este endpoint expiró',
+    body: 'Los endpoints duran 7 días. Crea uno nuevo para seguir recibiendo webhooks.',
+  },
+};
+
+function FatalNotice({ error, slug }: { error: ApiError; slug: string }) {
+  const message = FATAL_MESSAGES[error.status] ?? {
+    title: 'No se pudo abrir el endpoint',
+    body: error.message,
+  };
+  return (
+    <Notice title={message.title}>
+      {message.body}
+      <button
+        type="button"
+        onClick={() => {
+          forgetEndpoint(slug);
+          navigate('/');
+        }}
+        className="mt-4 block text-sm text-rose-300 underline underline-offset-2 hover:text-rose-100"
+      >
+        Quitarlo de este navegador
+      </button>
+    </Notice>
+  );
+}
+
+function Notice({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mx-auto max-w-xl px-4 py-16">
+      <h1 className="text-xl font-semibold text-zinc-100">{title}</h1>
+      <div className="mt-2 text-sm text-zinc-400">{children}</div>
+      <Link to="/" className="mt-6 inline-block text-sm text-emerald-300 hover:text-emerald-200">
+        ← Crear un endpoint nuevo
+      </Link>
+    </div>
+  );
+}
