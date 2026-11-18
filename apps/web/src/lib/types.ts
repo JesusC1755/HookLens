@@ -40,6 +40,37 @@ export interface ResponseConfig {
   delayMs: number;
 }
 
+export interface ReplaySummary {
+  id: string;
+  requestId: string;
+  targetUrl: string;
+  method: string;
+  /** null si no hubo respuesta: el motivo está en `error`. */
+  status: number | null;
+  durationMs: number | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export interface HttpMessage {
+  headers: MultiValueMap;
+  /** base64; null si no tenía body. */
+  body: string | null;
+}
+
+export interface ReplayDetail extends ReplaySummary {
+  sent: HttpMessage;
+  response: HttpMessage | null;
+}
+
+/** Sin `method`, `headers` ni `body`, el API reenvía los de la request original. */
+export interface ReplayInput {
+  targetUrl: string;
+  method?: string;
+  headers?: MultiValueMap;
+  body?: string | null;
+}
+
 export interface EndpointDetails {
   slug: string;
   url: string;

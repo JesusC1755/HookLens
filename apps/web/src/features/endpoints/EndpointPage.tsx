@@ -135,8 +135,7 @@ function EndpointWorkspace({ endpoint }: { endpoint: StoredEndpoint }) {
             <RequestDetail
               key={selectedId}
               id={selectedId}
-              token={endpoint.token}
-              endpointUrl={endpoint.url}
+              endpoint={endpoint}
               onBack={() => {
                 setSelectedId(null);
               }}

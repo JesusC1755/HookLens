@@ -6,7 +6,7 @@ import { formatBytes } from '../../lib/format';
 import { formatJson, type JsonToken, type JsonTokenKind, tokensToText } from '../../lib/formatJson';
 import { formatXml } from '../../lib/formatXml';
 import { hexDump } from '../../lib/hexdump';
-import type { MultiValueMap, RequestDetail } from '../../lib/types';
+import type { MultiValueMap } from '../../lib/types';
 import { MultiValueTable } from './MultiValueTable';
 
 type ViewId = 'formatted' | 'raw' | 'hex';
@@ -62,19 +62,28 @@ function downloadBytes(bytes: Bytes, filename: string) {
   }, 0);
 }
 
-export function BodyViewer({ request }: { request: RequestDetail }) {
-  const decoded = useMemo(() => decodeBody(request.body), [request.body]);
+interface BodyViewerProps {
+  /** base64, tal como lo entrega el API. */
+  body: string | null;
+  contentType: string | null;
+  /** Nombre del archivo al descargar, sin extensión. */
+  downloadName: string;
+}
+
+/** Sirve para el body de una request capturada y para el de una respuesta de replay. */
+export function BodyViewer({ body, contentType, downloadName }: BodyViewerProps) {
+  const decoded = useMemo(() => decodeBody(body), [body]);
   if (decoded.kind === 'empty') return <p className="text-sm text-zinc-500">Sin body</p>;
-  return <LoadedBody decoded={decoded} contentType={request.contentType} id={request.id} />;
+  return <LoadedBody decoded={decoded} contentType={contentType} downloadName={downloadName} />;
 }
 
 interface LoadedBodyProps {
   decoded: Exclude<DecodedBody, { kind: 'empty' }>;
   contentType: string | null;
-  id: string;
+  downloadName: string;
 }
 
-function LoadedBody({ decoded, contentType, id }: LoadedBodyProps) {
+function LoadedBody({ decoded, contentType, downloadName }: LoadedBodyProps) {
   const text = decoded.kind === 'text' ? decoded.text : null;
   const formatted = useMemo(
     () => (text === null ? null : formatBody(text, contentType)),
@@ -139,7 +148,7 @@ function LoadedBody({ decoded, contentType, id }: LoadedBodyProps) {
           <button
             type="button"
             onClick={() => {
-              downloadBytes(decoded.bytes, `body-${id}.${extension}`);
+              downloadBytes(decoded.bytes, `${downloadName}.${extension}`);
             }}
             className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
           >

@@ -2,6 +2,9 @@ import { API_URL } from './config';
 import type {
   CreatedEndpoint,
   EndpointDetails,
+  ReplayDetail,
+  ReplayInput,
+  ReplaySummary,
   RequestDetail,
   RequestPage,
   ResponseConfig,
@@ -119,6 +122,26 @@ export function listRequests(
 
 export function getRequest(id: string, token: string, signal?: AbortSignal) {
   return call<RequestDetail>(`/api/requests/${encodeURIComponent(id)}`, { token, signal });
+}
+
+export function createReplay(requestId: string, token: string, input: ReplayInput) {
+  return call<ReplayDetail>(`/api/requests/${encodeURIComponent(requestId)}/replays`, {
+    method: 'POST',
+    token,
+    json: input,
+  });
+}
+
+export async function listReplays(requestId: string, token: string, signal?: AbortSignal) {
+  const page = await call<{ items: ReplaySummary[] }>(
+    `/api/requests/${encodeURIComponent(requestId)}/replays`,
+    { token, signal },
+  );
+  return page.items;
+}
+
+export function getReplay(id: string, token: string, signal?: AbortSignal) {
+  return call<ReplayDetail>(`/api/replays/${encodeURIComponent(id)}`, { token, signal });
 }
 
 export function streamUrl(slug: string): string {

@@ -4,7 +4,9 @@ import { CopyButton } from '../../components/CopyButton';
 import { getRequest } from '../../lib/api';
 import { buildCurl } from '../../lib/curl';
 import { formatBytes, formatDateTime } from '../../lib/format';
+import type { StoredEndpoint } from '../../lib/storage';
 import type { RequestDetail as RequestDetailData } from '../../lib/types';
+import { ReplayPanel } from '../replays/ReplayPanel';
 import { BodyViewer } from './BodyViewer';
 import { MethodBadge } from './MethodBadge';
 import { MultiValueTable } from './MultiValueTable';
@@ -12,15 +14,14 @@ import { requestKeys } from './queryKeys';
 
 interface RequestDetailProps {
   id: string;
-  token: string;
-  endpointUrl: string;
+  endpoint: StoredEndpoint;
   onBack: () => void;
 }
 
-export function RequestDetail({ id, token, endpointUrl, onBack }: RequestDetailProps) {
+export function RequestDetail({ id, endpoint, onBack }: RequestDetailProps) {
   const detail = useQuery({
     queryKey: requestKeys.detail(id),
-    queryFn: ({ signal }) => getRequest(id, token, signal),
+    queryFn: ({ signal }) => getRequest(id, endpoint.token, signal),
     // Una request capturada no cambia nunca: se pide una sola vez.
     staleTime: Infinity,
   });
@@ -50,7 +51,7 @@ export function RequestDetail({ id, token, endpointUrl, onBack }: RequestDetailP
           </button>
         </div>
       ) : (
-        <RequestView request={detail.data} endpointUrl={endpointUrl} />
+        <RequestView request={detail.data} endpoint={endpoint} />
       )}
     </div>
   );
@@ -58,13 +59,13 @@ export function RequestDetail({ id, token, endpointUrl, onBack }: RequestDetailP
 
 function RequestView({
   request,
-  endpointUrl,
+  endpoint,
 }: {
   request: RequestDetailData;
-  endpointUrl: string;
+  endpoint: StoredEndpoint;
 }) {
   const target = request.rawQuery === '' ? request.path : `${request.path}?${request.rawQuery}`;
-  const curl = useMemo(() => buildCurl(request, endpointUrl), [request, endpointUrl]);
+  const curl = useMemo(() => buildCurl(request, endpoint.url), [request, endpoint.url]);
 
   return (
     <article className="space-y-6 p-4 lg:p-6">
@@ -95,7 +96,15 @@ function RequestView({
       )}
 
       <Section title="Body">
-        <BodyViewer request={request} />
+        <BodyViewer
+          body={request.body}
+          contentType={request.contentType}
+          downloadName={`body-${request.id}`}
+        />
+      </Section>
+
+      <Section title="Replay">
+        <ReplayPanel request={request} endpoint={endpoint} />
       </Section>
     </article>
   );

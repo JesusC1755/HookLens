@@ -16,6 +16,17 @@ export function base64ToBytes(base64: string): Bytes {
   return bytes;
 }
 
+// String.fromCharCode(...bytes) con 1 MB de argumentos desborda la pila: se arma por tramos.
+const BASE64_CHUNK = 0x8000;
+
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK));
+  }
+  return btoa(binary);
+}
+
 /** El body viaja en base64 sin tocar; aquí se decide solo cómo mostrarlo. */
 export function decodeBody(base64: string | null): DecodedBody {
   if (base64 === null) return { kind: 'empty' };
