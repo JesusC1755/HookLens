@@ -1,19 +1,17 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { isPublicAddress } from '../src/modules/replays/ssrf.js';
+import { isPublicAddress, withLoopback } from '../src/modules/replays/ssrf.js';
 import type { ReplayDetail, ReplaySummary } from '../src/modules/replays/serializers.js';
 import type { RequestSummary } from '../src/modules/requests/serializers.js';
 import { buildTestApp, createEndpoint, type TestEndpoint } from './helpers/app.js';
 import { createTestDb, resetDb } from './helpers/db.js';
 
-// El destino es un servidor local real. Para alcanzarlo, esta app permite loopback;
-// `strict` usa la política de producción y prueba que ahí queda bloqueado.
+// El destino es un servidor local real. Para alcanzarlo, esta app usa la misma política
+// que REPLAY_ALLOW_LOOPBACK; `strict` usa la de producción y prueba que ahí queda bloqueado.
 const handle = createTestDb();
-const allowLoopback = (ip: string) =>
-  ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || isPublicAddress(ip);
 const app = buildTestApp(handle.db, {
-  replay: { isAllowedAddress: allowLoopback, timeoutMs: 500 },
+  replay: { isAllowedAddress: withLoopback(isPublicAddress), timeoutMs: 500 },
 });
 const strict = buildTestApp(handle.db);
 

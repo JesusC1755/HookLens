@@ -4,6 +4,7 @@ import {
   createSafeLookup,
   isPublicAddress,
   parseTargetUrl,
+  withLoopback,
 } from '../../src/modules/replays/ssrf.js';
 
 describe('isPublicAddress', () => {
@@ -102,6 +103,41 @@ describe('createSafeLookup', () => {
     });
 
     expect(err).toMatchObject({ code: 'ENOTFOUND' });
+  });
+});
+
+describe('withLoopback (REPLAY_ALLOW_LOOPBACK)', () => {
+  const devPolicy = withLoopback(isPublicAddress);
+
+  it.each(['127.0.0.1', '127.8.9.10', '::1', '::ffff:127.0.0.1', '8.8.8.8'])('permite %s', (ip) => {
+    expect(devPolicy(ip)).toBe(true);
+  });
+
+  it.each([
+    '0.0.0.0',
+    '10.0.0.1',
+    '172.16.0.1',
+    '192.168.1.1',
+    '169.254.169.254',
+    'fd00::1',
+    'fe80::1',
+    '::ffff:169.254.169.254',
+  ])('sigue bloqueando %s', (ip) => {
+    expect(devPolicy(ip)).toBe(false);
+  });
+
+  it('con loopback permitido, localhost pasa por el lookup seguro', async () => {
+    const lookup = createSafeLookup(devPolicy, (_host, _options, callback) => {
+      callback(null, [
+        { address: '127.0.0.1', family: 4 },
+        { address: '::1', family: 6 },
+      ]);
+    });
+    const err = await new Promise((resolve) => {
+      lookup('localhost', { all: true }, resolve);
+    });
+
+    expect(err).toBeNull();
   });
 });
 

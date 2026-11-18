@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { createDb } from './db/client.js';
+import { isPublicAddress, withLoopback } from './modules/replays/ssrf.js';
 
 const env = loadEnv();
 
@@ -13,8 +14,17 @@ const app = buildApp({
   publicBaseUrl: env.PUBLIC_BASE_URL,
   trustProxy: env.TRUST_PROXY,
   corsOrigins: env.CORS_ORIGINS,
+  replay: {
+    isAllowedAddress: env.REPLAY_ALLOW_LOOPBACK ? withLoopback(isPublicAddress) : isPublicAddress,
+  },
   logger: { level: env.LOG_LEVEL },
 });
+
+if (env.REPLAY_ALLOW_LOOPBACK) {
+  app.log.warn(
+    'REPLAY_ALLOW_LOOPBACK activo: el replay puede llegar a localhost (solo desarrollo)',
+  );
+}
 
 app.addHook('onClose', async () => {
   await pool.end();

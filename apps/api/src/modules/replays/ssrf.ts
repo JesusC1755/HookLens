@@ -41,6 +41,26 @@ export const isPublicAddress: AddressPolicy = (ip) => {
   return !blockList.check(ip, family === 4 ? 'ipv4' : 'ipv6');
 };
 
+const loopbackList = new BlockList();
+loopbackList.addSubnet('127.0.0.0', 8, 'ipv4');
+loopbackList.addAddress('::1', 'ipv6');
+
+/** 127.0.0.0/8 y ::1 (también ::ffff:127.x, por el mapeo IPv4 de BlockList). */
+export function isLoopbackAddress(ip: string): boolean {
+  const family = isIP(ip);
+  if (family === 0) return false;
+  return loopbackList.check(ip, family === 4 ? 'ipv4' : 'ipv6');
+}
+
+/**
+ * Solo para desarrollo (REPLAY_ALLOW_LOOPBACK): suma loopback a la política para
+ * reenviar a una app en localhost. El resto de rangos privados y los metadatos de
+ * la nube siguen bloqueados.
+ */
+export function withLoopback(policy: AddressPolicy): AddressPolicy {
+  return (ip) => isLoopbackAddress(ip) || policy(ip);
+}
+
 const TARGET_NOT_ALLOWED = 'ERR_TARGET_NOT_ALLOWED';
 
 class TargetNotAllowedError extends Error {

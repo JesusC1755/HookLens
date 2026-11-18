@@ -59,6 +59,38 @@ describe('loadEnv', () => {
     },
   );
 
+  it('REPLAY_ALLOW_LOOPBACK está desactivada por defecto', () => {
+    expect(loadEnv({ DATABASE_URL }).REPLAY_ALLOW_LOOPBACK).toBe(false);
+    expect(loadEnv({ DATABASE_URL, REPLAY_ALLOW_LOOPBACK: 'true' }).REPLAY_ALLOW_LOOPBACK).toBe(
+      true,
+    );
+  });
+
+  it.each(['1', 'yes', 'TRUE', ''])(
+    'rechaza REPLAY_ALLOW_LOOPBACK=%j (solo true o false)',
+    (value) => {
+      expect(() => loadEnv({ DATABASE_URL, REPLAY_ALLOW_LOOPBACK: value })).toThrow(
+        /REPLAY_ALLOW_LOOPBACK/,
+      );
+    },
+  );
+
+  it('en producción se niega a arrancar con REPLAY_ALLOW_LOOPBACK=true', () => {
+    const production = {
+      DATABASE_URL,
+      NODE_ENV: 'production',
+      PUBLIC_BASE_URL: 'https://api.hooklens.dev',
+      CORS_ORIGINS: 'https://hooklens.dev',
+    };
+
+    expect(() => loadEnv({ ...production, REPLAY_ALLOW_LOOPBACK: 'true' })).toThrow(
+      /No se permite en producción\s+→ at REPLAY_ALLOW_LOOPBACK/,
+    );
+    expect(loadEnv({ ...production, REPLAY_ALLOW_LOOPBACK: 'false' }).REPLAY_ALLOW_LOOPBACK).toBe(
+      false,
+    );
+  });
+
   it('rechaza una DATABASE_URL que no es de Postgres', () => {
     expect(() => loadEnv({ DATABASE_URL: 'mysql://u:p@localhost/db' })).toThrow(/DATABASE_URL/);
   });

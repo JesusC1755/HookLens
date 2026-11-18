@@ -54,9 +54,24 @@ const EnvSchema = z
     TRUST_PROXY: commaList(isTrustedProxyEntry, 'Debe ser una IP, un CIDR o un alias'),
     // Orígenes del front autorizados a llamar a /api desde el navegador.
     CORS_ORIGINS: commaList(isOrigin, 'Debe ser un origen como https://app.ejemplo.com'),
+    // Solo desarrollo: deja que el replay llegue a localhost. "true" o "false", nada más,
+    // para que un valor ambiguo ("1", "yes") no la active por accidente.
+    REPLAY_ALLOW_LOOPBACK: z
+      .enum(['true', 'false'], { error: 'Debe ser "true" o "false"' })
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;
+    // En producción, localhost es el propio servidor (DB, red interna): con esto
+    // activo el proceso no arranca, así la protección SSRF no se puede apagar.
+    if (env.REPLAY_ALLOW_LOOPBACK) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['REPLAY_ALLOW_LOOPBACK'],
+        message: 'No se permite en producción',
+      });
+    }
     if (env.PUBLIC_BASE_URL === undefined) {
       ctx.addIssue({
         code: 'custom',
