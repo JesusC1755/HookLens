@@ -12,10 +12,11 @@ describe('decodeBody', () => {
   });
 
   it('muestra como texto un body UTF-8, incluidos acentos y emoji', () => {
-    expect(decodeBody(base64('{"nombre":"José 🚀"}'))).toEqual({
-      kind: 'text',
-      text: '{"nombre":"José 🚀"}',
-    });
+    const decoded = decodeBody(base64('{"nombre":"José 🚀"}'));
+
+    expect(decoded).toMatchObject({ kind: 'text', text: '{"nombre":"José 🚀"}' });
+    // Los bytes originales se conservan para el visor hex y la descarga (é = 2, 🚀 = 4).
+    expect(decoded.kind === 'text' && decoded.bytes.length).toBe(23);
   });
 
   it('no convierte en texto corrupto un body binario', () => {
