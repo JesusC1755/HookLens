@@ -4,6 +4,7 @@ import type { Database } from '../../db/client.js';
 import { AppError } from '../../lib/errors.js';
 import { SLUG_PATTERN } from '../../lib/tokens.js';
 import { findEndpointForIngest } from '../endpoints/service.js';
+import type { RequestBus } from '../requests/serializers.js';
 import { normalizeHeaders, normalizeIp, parseIngestUrl } from './normalize.js';
 import { recordRequest } from './service.js';
 
@@ -11,6 +12,8 @@ export const INGEST_BODY_LIMIT_BYTES = 1024 * 1024;
 
 interface IngestRoutesOptions {
   db: Database;
+  /** La ingesta solo publica: no sabe quién escucha (SSE, CLI…). */
+  bus: Pick<RequestBus, 'publish'>;
 }
 
 type IngestRequest = FastifyRequest<{ Params: { slug: string } }>;
@@ -19,7 +22,11 @@ type IngestRequest = FastifyRequest<{ Params: { slug: string } }>;
  * Plugin encapsulado: los cambios de parser y el hook solo afectan a /wh/*,
  * el resto de la API conserva el parser JSON de Fastify.
  */
-export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (app, { db }, done) => {
+export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (
+  app,
+  { db, bus },
+  done,
+) => {
   // Cualquier content-type, incluso ausente, llega al handler como Buffer sin tocar.
   app.removeAllContentTypeParsers();
   app.addContentTypeParser('*', { parseAs: 'buffer' }, (_request, body, parsed) => {
@@ -50,7 +57,7 @@ export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (app, { 
     const body = Buffer.isBuffer(request.body) && request.body.length > 0 ? request.body : null;
 
     // Se persiste antes del retraso: si el emisor corta por timeout, la request no se pierde.
-    await recordRequest(db, {
+    const summary = await recordRequest(db, {
       endpointId: endpoint.id,
       method: request.method,
       ...parseIngestUrl(request.url),
@@ -60,6 +67,8 @@ export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (app, { 
       sizeBytes: body?.length ?? 0,
       ip: normalizeIp(request.ip),
     });
+    // Se publica después del insert: quien reciba el evento ya puede pedir el detalle.
+    bus.publish(slug, summary);
 
     if (endpoint.respDelayMs > 0) await sleep(endpoint.respDelayMs);
 

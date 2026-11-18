@@ -12,6 +12,7 @@ const app = buildApp({
   db,
   publicBaseUrl: env.PUBLIC_BASE_URL,
   trustProxy: env.TRUST_PROXY,
+  corsOrigins: env.CORS_ORIGINS,
   logger: { level: env.LOG_LEVEL },
 });
 

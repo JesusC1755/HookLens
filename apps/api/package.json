@@ -15,6 +15,7 @@
     "db:migrate:prod": "node dist/db/migrate.js"
   },
   "dependencies": {
+    "@fastify/cors": "^11.4.3",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.8",
     "pg": "^8.23.1",
