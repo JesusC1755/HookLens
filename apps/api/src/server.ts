@@ -8,7 +8,12 @@ const { db, pool } = createDb(env.DATABASE_URL, (err) => {
   app.log.error({ err }, 'error en un cliente inactivo del pool de Postgres');
 });
 
-const app = buildApp({ db, logger: { level: env.LOG_LEVEL } });
+const app = buildApp({
+  db,
+  publicBaseUrl: env.PUBLIC_BASE_URL,
+  trustProxy: env.TRUST_PROXY,
+  logger: { level: env.LOG_LEVEL },
+});
 
 app.addHook('onClose', async () => {
   await pool.end();
