@@ -2,6 +2,8 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../../db/client.js';
 import { endpoints, requests } from '../../db/schema.js';
 import { type Cursor, encodeCursor } from '../../lib/cursor.js';
+import { AppError } from '../../lib/errors.js';
+import { requireBearerToken, tokenMatchesHash } from '../endpoints/auth.js';
 import {
   type RequestDetail,
   type RequestSummary,
@@ -58,8 +60,10 @@ export async function deleteRequests(db: Database, endpointId: string): Promise<
   return result.rowCount ?? 0;
 }
 
+export type CapturedRequest = typeof requests.$inferSelect;
+
 export interface RequestWithOwner {
-  request: RequestDetail;
+  request: CapturedRequest;
   ownerTokenHash: string;
   endpointExpiresAt: Date;
 }
@@ -78,6 +82,33 @@ export async function findRequestWithOwner(
     .innerJoin(endpoints, eq(endpoints.id, requests.endpointId))
     .where(eq(requests.id, id))
     .limit(1);
-  if (!row) return undefined;
-  return { ...row, request: toDetail(row.request) };
+  return row;
+}
+
+/**
+ * La request, solo si el token es del dueño de su endpoint. Con un token ajeno la
+ * request "no existe": responder 403 confirmaría que el id es real.
+ */
+export async function findOwnedRequest(
+  db: Database,
+  id: string,
+  authorization: string | undefined,
+): Promise<CapturedRequest> {
+  const token = requireBearerToken(authorization);
+  const found = await findRequestWithOwner(db, id);
+  if (!found || !tokenMatchesHash(token, found.ownerTokenHash)) {
+    throw new AppError(404, 'REQUEST_NOT_FOUND', 'La request no existe');
+  }
+  if (found.endpointExpiresAt.getTime() <= Date.now()) {
+    throw new AppError(410, 'ENDPOINT_EXPIRED', 'El endpoint expiró');
+  }
+  return found.request;
+}
+
+export async function getRequestDetail(
+  db: Database,
+  id: string,
+  authorization: string | undefined,
+): Promise<RequestDetail> {
+  return toDetail(await findOwnedRequest(db, id, authorization));
 }

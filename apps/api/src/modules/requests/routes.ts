@@ -2,10 +2,10 @@ import type { FastifyPluginCallback } from 'fastify';
 import type { Database } from '../../db/client.js';
 import { decodeCursor } from '../../lib/cursor.js';
 import { AppError } from '../../lib/errors.js';
-import { authorizeEndpoint, requireBearerToken, tokenMatchesHash } from '../endpoints/auth.js';
+import { authorizeEndpoint } from '../endpoints/auth.js';
 import type { EndpointBus } from './events.js';
 import { requestDetailSchema, requestSummarySchema } from './serializers.js';
-import { deleteRequests, findRequestWithOwner, listRequests } from './service.js';
+import { deleteRequests, getRequestDetail, listRequests } from './service.js';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
@@ -119,19 +119,7 @@ export const requestRoutes: FastifyPluginCallback<RequestRoutesOptions> = (
         response: { 200: requestDetailSchema },
       },
     },
-    async (request) => {
-      const token = requireBearerToken(request.headers.authorization);
-      const found = await findRequestWithOwner(db, request.params.id);
-
-      // Con un token ajeno la request "no existe": responder 403 confirmaría que el id es real.
-      if (!found || !tokenMatchesHash(token, found.ownerTokenHash)) {
-        throw new AppError(404, 'REQUEST_NOT_FOUND', 'La request no existe');
-      }
-      if (found.endpointExpiresAt.getTime() <= Date.now()) {
-        throw new AppError(410, 'ENDPOINT_EXPIRED', 'El endpoint expiró');
-      }
-      return found.request;
-    },
+    async (request) => getRequestDetail(db, request.params.id, request.headers.authorization),
   );
 
   done();
