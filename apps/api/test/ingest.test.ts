@@ -241,6 +241,30 @@ describe('ingesta: endpoint y respuesta', () => {
     expect(res.body).toBe('aceptado');
   });
 
+  it('aísla la respuesta configurada: un HTML no se ejecuta en el dominio del API', async () => {
+    await db
+      .update(endpoints)
+      .set({
+        // Aunque llegara a la base sin pasar por la API de gestión, no se puede pisar la CSP.
+        respHeaders: { 'content-type': 'text/html', 'content-security-policy': 'default-src *' },
+        respBody: '<script>alert(1)</script>',
+      })
+      .where(eq(endpoints.slug, slug));
+
+    const res = await app.inject({ method: 'GET', url: `/wh/${slug}` });
+
+    expect(res.headers['content-type']).toBe('text/html');
+    expect(res.headers['content-security-policy']).toBe('sandbox');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+  });
+
+  it('sin content-type configurado responde texto plano', async () => {
+    const res = await app.inject({ method: 'POST', url: `/wh/${slug}` });
+
+    expect(res.headers['content-type']).toBe('text/plain; charset=utf-8');
+    expect(res.body).toBe('');
+  });
+
   it('aplica el retraso configurado y guarda la request antes de responder', async () => {
     await db.update(endpoints).set({ respDelayMs: 300 }).where(eq(endpoints.slug, slug));
 

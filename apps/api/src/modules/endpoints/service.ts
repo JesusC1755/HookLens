@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
 import type { Database } from '../../db/client.js';
 import { endpoints } from '../../db/schema.js';
-import { isUniqueViolation } from '../../lib/errors.js';
+import { AppError, isUniqueViolation } from '../../lib/errors.js';
 import { generateOwnerToken, generateSlug, hashOwnerToken } from '../../lib/tokens.js';
+import type { ResponseConfig } from './response-config.js';
 
 const MAX_SLUG_ATTEMPTS = 3;
 
@@ -30,6 +31,57 @@ export async function createEndpoint(db: Database): Promise<CreatedEndpoint> {
       if (!isUniqueViolation(err) || attempt >= MAX_SLUG_ATTEMPTS) throw err;
     }
   }
+}
+
+const responseColumns = {
+  status: endpoints.respStatus,
+  headers: endpoints.respHeaders,
+  body: endpoints.respBody,
+  delayMs: endpoints.respDelayMs,
+};
+
+export interface EndpointDetails {
+  slug: string;
+  createdAt: Date;
+  expiresAt: Date;
+  response: ResponseConfig;
+}
+
+export async function getEndpointDetails(db: Database, id: string): Promise<EndpointDetails> {
+  const [row] = await db
+    .select({
+      slug: endpoints.slug,
+      createdAt: endpoints.createdAt,
+      expiresAt: endpoints.expiresAt,
+      ...responseColumns,
+    })
+    .from(endpoints)
+    .where(eq(endpoints.id, id))
+    .limit(1);
+  if (!row) throw new AppError(404, 'ENDPOINT_NOT_FOUND', 'El endpoint no existe');
+
+  const { slug, createdAt, expiresAt, ...response } = row;
+  return { slug, createdAt, expiresAt, response };
+}
+
+export async function updateResponseConfig(
+  db: Database,
+  id: string,
+  config: ResponseConfig,
+): Promise<ResponseConfig> {
+  const [row] = await db
+    .update(endpoints)
+    .set({
+      respStatus: config.status,
+      respHeaders: config.headers,
+      respBody: config.body,
+      respDelayMs: config.delayMs,
+    })
+    .where(eq(endpoints.id, id))
+    .returning(responseColumns);
+  // Lo borró el job de expiración entre la autorización y el UPDATE.
+  if (!row) throw new AppError(404, 'ENDPOINT_NOT_FOUND', 'El endpoint no existe');
+  return row;
 }
 
 export type EndpointForIngest = Pick<
