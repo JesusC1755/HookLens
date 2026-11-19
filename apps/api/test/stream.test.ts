@@ -1,5 +1,7 @@
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { endpoints } from '../src/db/schema.js';
 import { createMemoryPubSub } from '../src/lib/pubsub.js';
 import type { EndpointEvent } from '../src/modules/requests/events.js';
 import type { RequestSummary } from '../src/modules/requests/serializers.js';
@@ -113,6 +115,18 @@ describe('GET /api/endpoints/:slug/stream', () => {
 
     expect(res.status).toBe(200);
     expect(await events.next()).toMatchObject({ event: 'cleared', data: '{}' });
+  });
+
+  it('avisa con `expired` y cierra el stream cuando vence el endpoint', async () => {
+    await handle.db
+      .update(endpoints)
+      .set({ expiresAt: new Date(Date.now() + 300) })
+      .where(eq(endpoints.slug, owner.slug));
+    const events = await connect(owner);
+
+    expect(await events.next(2_000)).toMatchObject({ event: 'expired' });
+    await expect(events.next()).rejects.toThrow('el stream SSE se cerró');
+    await waitFor(() => bus.subscriberCount(owner.slug) === 0);
   });
 
   it('al desconectarse el cliente se libera la suscripción', async () => {

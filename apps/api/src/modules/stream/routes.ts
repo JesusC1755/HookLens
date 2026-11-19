@@ -14,6 +14,8 @@ export const MAX_STREAMS_PER_ENDPOINT = 5;
 // Si el cliente no consume y el buffer crece, se corta: al reconectar recupera
 // el estado con la lista paginada, en lugar de acumular memoria en el servidor.
 const MAX_BUFFERED_BYTES = 1024 * 1024;
+// setTimeout se desborda por encima de 2^31-1 ms (~24,8 días) y dispara al instante.
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 interface StreamRoutesOptions {
   db: Database;
@@ -96,12 +98,22 @@ export const streamRoutes: FastifyPluginCallback<StreamRoutesOptions> = (
       const heartbeat = setInterval(() => {
         write(': ping\n\n');
       }, HEARTBEAT_INTERVAL_MS);
+      // Al vencer, el cliente se entera en el momento: sin esto el stream seguiría
+      // abierto y mudo hasta que el job de expiración borrara el endpoint.
+      const expiry = setTimeout(
+        () => {
+          write(formatEvent('expired', {}));
+          close();
+        },
+        Math.min(MAX_TIMER_MS, Math.max(0, endpoint.expiresAt.getTime() - Date.now())),
+      );
 
       function close() {
         if (closed) return;
         closed = true;
         unsubscribe();
         clearInterval(heartbeat);
+        clearTimeout(expiry);
         openStreams.delete(close);
         res.end();
       }

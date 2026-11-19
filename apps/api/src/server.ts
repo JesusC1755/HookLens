@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { createDb } from './db/client.js';
+import { startExpirationJob } from './jobs/expire-endpoints.js';
 import { isPublicAddress, withLoopback } from './modules/replays/ssrf.js';
 
 const env = loadEnv();
@@ -26,7 +27,13 @@ if (env.REPLAY_ALLOW_LOOPBACK) {
   );
 }
 
+// Una pasada al arrancar y luego cada 10 minutos. La ingesta ya rechaza los vencidos
+// con 410; el job solo libera el espacio.
+const expirationJob = startExpirationJob({ db, log: app.log, intervalMs: 10 * 60_000 });
+
 app.addHook('onClose', async () => {
+  // En este orden: si el pool se cierra con una pasada en curso, esa pasada falla.
+  await expirationJob.stop();
   await pool.end();
 });
 

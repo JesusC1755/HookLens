@@ -34,6 +34,7 @@ export function requireBearerToken(authorization: string | undefined): string {
 export interface OwnedEndpoint {
   id: string;
   slug: string;
+  expiresAt: Date;
 }
 
 /** Verifica que el token sea el dueño del endpoint y que este no haya expirado. */
@@ -64,5 +65,5 @@ export async function authorizeEndpoint(
   if (endpoint.expiresAt.getTime() <= Date.now()) {
     throw new AppError(410, 'ENDPOINT_EXPIRED', 'El endpoint expiró');
   }
-  return { id: endpoint.id, slug: endpoint.slug };
+  return { id: endpoint.id, slug: endpoint.slug, expiresAt: endpoint.expiresAt };
 }
