@@ -1,3 +1,4 @@
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Link } from './components/Link';
 import { EndpointPage } from './features/endpoints/EndpointPage';
 import { HomePage } from './features/endpoints/HomePage';
@@ -31,7 +32,12 @@ export function App() {
           HookLens
         </Link>
       </header>
-      <main className="flex min-h-0 flex-1 flex-col">{renderRoute(route)}</main>
+      <main className="flex min-h-0 flex-1 flex-col">
+        {/* key: al navegar a otra página, un error anterior no queda pegado. */}
+        <ErrorBoundary key={route.name === 'endpoint' ? route.slug : route.name}>
+          {renderRoute(route)}
+        </ErrorBoundary>
+      </main>
     </div>
   );
 }

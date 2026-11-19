@@ -1,6 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { type ApiError, listRequests, streamUrl } from '../../lib/api';
+import { ApiError, listRequests, streamUrl } from '../../lib/api';
 import { openEventStream, type StreamStatus } from '../../lib/sse';
 import type { StoredEndpoint } from '../../lib/storage';
 import type { RequestSummary } from '../../lib/types';
@@ -95,6 +95,12 @@ export function useRequestFeed({ slug, token }: StoredEndpoint, filters: Request
         }
         if (event.event === 'cleared') {
           reset();
+          return;
+        }
+        if (event.event === 'expired') {
+          // El servidor cierra el stream al vencer; al reconectar respondería 410 igual,
+          // pero así se muestra en el momento y no tras el retraso de reconexión.
+          setFatalError(new ApiError(410, 'ENDPOINT_EXPIRED', 'El endpoint expiró'));
           return;
         }
         if (event.event !== 'request') return;
