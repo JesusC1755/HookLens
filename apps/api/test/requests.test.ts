@@ -140,6 +140,110 @@ describe('GET /api/endpoints/:slug/requests', () => {
   });
 });
 
+describe('filtros de GET /api/endpoints/:slug/requests', () => {
+  async function send(
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    payload?: Buffer | string,
+  ) {
+    const res = await app.inject({
+      method: method as 'POST',
+      url: `/wh/${owner.slug}${url}`,
+      headers,
+      ...(payload === undefined ? {} : { payload }),
+    });
+    expect(res.statusCode).toBe(200);
+  }
+
+  beforeEach(async () => {
+    await send(
+      'POST',
+      '/github',
+      { 'x-github-event': 'push', 'content-type': 'application/json' },
+      '{"ref":"refs/heads/main","total":100%}',
+    );
+    await send(
+      'POST',
+      '/github',
+      { 'x-github-event': 'issues', 'content-type': 'application/json' },
+      '{"action":"Opened"}',
+    );
+    await send(
+      'PUT',
+      '/stripe?mode=Live',
+      { 'stripe-signature': 't=1,v1=abc' },
+      Buffer.from([0x00, 0xff, 0xfe, 0x68, 0x6f, 0x6c, 0x61]),
+    );
+    await send('GET', '/ping', {});
+  });
+
+  async function paths(query: string): Promise<string[]> {
+    const res = await listPage(owner, query);
+    expect(res.statusCode).toBe(200);
+    return res.json<Page>().items.map((item) => `${item.method} ${item.path}`);
+  }
+
+  it('filtra por uno o varios métodos', async () => {
+    expect(await paths('?method=put')).toEqual(['PUT /stripe']);
+    expect(await paths('?method=PUT,GET')).toEqual(['GET /ping', 'PUT /stripe']);
+  });
+
+  it('busca texto en path y query sin distinguir mayúsculas', async () => {
+    expect(await paths('?q=STRIPE')).toEqual(['PUT /stripe']);
+    expect(await paths('?q=mode%3Dlive')).toEqual(['PUT /stripe']);
+  });
+
+  it('busca texto en los headers', async () => {
+    expect(await paths('?q=v1%3Dabc')).toEqual(['PUT /stripe']);
+  });
+
+  it('busca en el body, también dentro de un body binario, sin romper la consulta', async () => {
+    expect(await paths('?q=refs%2Fheads')).toEqual(['POST /github']);
+    // "hola" está después de bytes que no son UTF-8 válido.
+    expect(await paths('?q=hola')).toEqual(['PUT /stripe']);
+  });
+
+  it('en el body la búsqueda es exacta: distingue mayúsculas', async () => {
+    // Ignorarlas exigiría decodificar o copiar cada body en cada búsqueda.
+    expect(await paths('?q=Opened')).toEqual(['POST /github']);
+    expect(await paths('?q=opened')).toEqual([]);
+  });
+
+  it('trata %, _ y \\ como texto literal, no como comodines', async () => {
+    expect(await paths('?q=100%25')).toEqual(['POST /github']);
+    expect(await paths('?q=_')).toEqual([]);
+  });
+
+  it('filtra por presencia de un header o por su valor exacto', async () => {
+    expect(await paths('?header=Stripe-Signature')).toEqual(['PUT /stripe']);
+    expect(await paths('?header=x-github-event')).toEqual(['POST /github', 'POST /github']);
+    expect(await paths('?header=x-github-event:%20issues')).toEqual(['POST /github']);
+    expect(await paths('?header=x-github-event:pull_request')).toEqual([]);
+  });
+
+  it('combina filtros y pagina con ellos', async () => {
+    expect(await paths('?method=POST&q=Opened')).toEqual(['POST /github']);
+    expect(await paths('?method=PUT&q=Opened')).toEqual([]);
+
+    const first = (await listPage(owner, '?header=x-github-event&limit=1')).json<Page>();
+    const second = (
+      await listPage(owner, `?header=x-github-event&limit=1&cursor=${first.nextCursor ?? ''}`)
+    ).json<Page>();
+
+    expect([...first.items, ...second.items]).toHaveLength(2);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it.each([
+    ['un método con caracteres raros', '?method=POST;DROP'],
+    ['un nombre de header inválido', '?header=x%20mal:1'],
+    ['una búsqueda demasiado larga', `?q=${'x'.repeat(201)}`],
+  ])('responde 400 con %s', async (_case, query) => {
+    expect((await listPage(owner, query)).statusCode).toBe(400);
+  });
+});
+
 describe('DELETE /api/endpoints/:slug/requests', () => {
   function clear(endpoint: TestEndpoint) {
     return app.inject({

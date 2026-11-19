@@ -4,6 +4,7 @@ import { decodeCursor } from '../../lib/cursor.js';
 import { AppError } from '../../lib/errors.js';
 import { authorizeEndpoint } from '../endpoints/auth.js';
 import type { EndpointBus } from './events.js';
+import { parseFilters, type RawFilters } from './filters.js';
 import { requestDetailSchema, requestSummarySchema } from './serializers.js';
 import { deleteRequests, getRequestDetail, listRequests } from './service.js';
 
@@ -22,7 +23,7 @@ export const requestRoutes: FastifyPluginCallback<RequestRoutesOptions> = (
 ) => {
   app.get<{
     Params: { slug: string };
-    Querystring: { cursor?: string; limit: number };
+    Querystring: RawFilters & { cursor?: string; limit: number };
   }>(
     '/api/endpoints/:slug/requests',
     {
@@ -42,6 +43,10 @@ export const requestRoutes: FastifyPluginCallback<RequestRoutesOptions> = (
               maximum: MAX_PAGE_SIZE,
               default: DEFAULT_PAGE_SIZE,
             },
+            // Uno o varios separados por coma: method=POST,PUT
+            method: { type: 'string', maxLength: 100, pattern: '^[A-Za-z]+(,[A-Za-z]+)*$' },
+            q: { type: 'string', maxLength: 200 },
+            header: { type: 'string', maxLength: 300 },
           },
           additionalProperties: false,
         },
@@ -65,13 +70,14 @@ export const requestRoutes: FastifyPluginCallback<RequestRoutesOptions> = (
         request.headers.authorization,
       );
 
-      const { cursor: rawCursor, limit } = request.query;
+      const { cursor: rawCursor, limit, ...rawFilters } = request.query;
       const cursor = rawCursor === undefined ? null : decodeCursor(rawCursor);
       if (rawCursor !== undefined && cursor === null) {
         throw new AppError(400, 'INVALID_CURSOR', 'El cursor no es válido');
       }
 
-      return listRequests(db, endpoint.id, { cursor, limit });
+      // El cursor no guarda los filtros: el cliente pide cada página con los mismos.
+      return listRequests(db, endpoint.id, { cursor, limit, filters: parseFilters(rawFilters) });
     },
   );
 

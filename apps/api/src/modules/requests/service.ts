@@ -4,6 +4,7 @@ import { endpoints, requests } from '../../db/schema.js';
 import { type Cursor, encodeCursor } from '../../lib/cursor.js';
 import { AppError } from '../../lib/errors.js';
 import { requireBearerToken, tokenMatchesHash } from '../endpoints/auth.js';
+import { filterConditions, type RequestFilters } from './filters.js';
 import {
   type RequestDetail,
   type RequestSummary,
@@ -26,8 +27,10 @@ export interface RequestPage {
 export async function listRequests(
   db: Database,
   endpointId: string,
-  { cursor, limit }: { cursor: Cursor | null; limit: number },
+  { cursor, limit, filters }: { cursor: Cursor | null; limit: number; filters: RequestFilters },
 ): Promise<RequestPage> {
+  // El índice (endpoint_id, received_at) acota la búsqueda a las requests del endpoint;
+  // los filtros se evalúan sobre esas filas, que están limitadas por endpoint.
   const rows = await db
     .select(summaryColumns)
     .from(requests)
@@ -37,6 +40,7 @@ export async function listRequests(
         cursor === null
           ? undefined
           : sql`(${requests.receivedAt}, ${requests.id}) < (${cursor.receivedAt.toISOString()}::timestamptz, ${cursor.id}::uuid)`,
+        ...filterConditions(filters),
       ),
     )
     .orderBy(desc(requests.receivedAt), desc(requests.id))
