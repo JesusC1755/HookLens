@@ -110,9 +110,10 @@ export function listRequests(
   slug: string,
   token: string,
   cursor: string | null,
+  filters: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<RequestPage> {
-  const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+  const params = new URLSearchParams({ ...filters, limit: String(PAGE_SIZE) });
   if (cursor !== null) params.set('cursor', cursor);
   return call<RequestPage>(`${endpointPath(slug)}/requests?${params.toString()}`, {
     token,

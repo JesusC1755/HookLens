@@ -9,33 +9,74 @@ interface RequestListProps {
   endpointUrl: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  compareIds: readonly string[];
+  onToggleCompare: (id: string) => void;
+  onClearFilters: () => void;
 }
 
-export function RequestList({ feed, endpointUrl, selectedId, onSelect }: RequestListProps) {
-  const { requests, list, subscribed } = feed;
+export function RequestList({
+  feed,
+  endpointUrl,
+  selectedId,
+  onSelect,
+  compareIds,
+  onToggleCompare,
+  onClearFilters,
+}: RequestListProps) {
+  const { requests, list, subscribed, filtered } = feed;
 
   if (requests.length === 0) {
     if (!subscribed || list.isPending) return <ListMessage>Conectando…</ListMessage>;
     if (list.isError) return <ListError message={list.error.message} onRetry={list.refetch} />;
+    if (filtered) {
+      return (
+        <div className="p-6 text-sm">
+          <p className="text-zinc-300">Ninguna request coincide con los filtros.</p>
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="mt-2 text-emerald-300 hover:text-emerald-200"
+          >
+            Quitar filtros
+          </button>
+        </div>
+      );
+    }
     return <WaitingForRequests endpointUrl={endpointUrl} />;
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div
+      className={`min-h-0 flex-1 overflow-y-auto transition-opacity ${list.isPlaceholderData ? 'opacity-60' : ''}`}
+      aria-busy={list.isPlaceholderData}
+    >
       <ul className="divide-y divide-zinc-800/80">
         {requests.map((request) => {
           const selected = request.id === selectedId;
+          const compared = compareIds.includes(request.id);
           return (
-            <li key={request.id}>
+            <li
+              key={request.id}
+              className={`flex items-center transition ${selected ? 'bg-zinc-800/80' : 'hover:bg-zinc-900'}`}
+            >
+              {/* Fuera del botón: un control interactivo no puede ir dentro de otro. */}
+              <input
+                type="checkbox"
+                checked={compared}
+                onChange={() => {
+                  onToggleCompare(request.id);
+                }}
+                aria-label={`Comparar ${request.method} ${request.path}`}
+                title="Elegir para comparar"
+                className="ml-4 shrink-0 accent-emerald-500"
+              />
               <button
                 type="button"
                 onClick={() => {
                   onSelect(request.id);
                 }}
                 aria-current={selected ? 'true' : undefined}
-                className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${
-                  selected ? 'bg-zinc-800/80' : 'hover:bg-zinc-900'
-                }`}
+                className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-4 pl-3 text-left"
               >
                 <MethodBadge method={request.method} />
                 <span className="min-w-0 flex-1">

@@ -1,11 +1,14 @@
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type ApiError, listRequests, streamUrl } from '../../lib/api';
 import { openEventStream, type StreamStatus } from '../../lib/sse';
 import type { StoredEndpoint } from '../../lib/storage';
 import type { RequestSummary } from '../../lib/types';
+import { filterParams, hasFilters, type RequestFilters } from './filters';
 import { addLiveRequest, mergeRequests } from './merge';
-import { requestKeys } from './queryKeys';
+import { isFilteredListKey, requestKeys } from './queryKeys';
+
+const FILTERED_REFRESH_DELAY_MS = 500;
 
 export interface StreamState {
   status: StreamStatus;
@@ -34,8 +37,11 @@ function parseSummary(data: string): RequestSummary | null {
  * 3. lo que llega por SSE se une a lo paginado, deduplicado por id.
  * Así ninguna request cae en el hueco entre la consulta y la suscripción.
  * En cada reconexión se vuelve a pedir la lista: lo que llegó sin stream no se pierde.
+ *
+ * Con filtros, el evento SSE no alcanza para decidir: trae el resumen, sin headers ni
+ * body. En lugar de adivinar, se vuelve a pedir la lista filtrada (con debounce).
  */
-export function useRequestFeed({ slug, token }: StoredEndpoint) {
+export function useRequestFeed({ slug, token }: StoredEndpoint, filters: RequestFilters) {
   const queryClient = useQueryClient();
   const [live, setLive] = useState<readonly RequestSummary[]>([]);
   const [stream, setStream] = useState<StreamState>({ status: 'connecting', reason: null });
@@ -48,57 +54,77 @@ export function useRequestFeed({ slug, token }: StoredEndpoint) {
   const reset = useCallback(() => {
     setLive([]);
     setGeneration((current) => current + 1);
-    void queryClient.resetQueries({ queryKey: requestKeys.list(slug) });
+    void queryClient.resetQueries({ queryKey: requestKeys.lists(slug) });
   }, [queryClient, slug]);
 
+  const filtered = hasFilters(filters);
   const list = useInfiniteQuery({
-    queryKey: requestKeys.list(slug),
-    queryFn: ({ pageParam, signal }) => listRequests(slug, token, pageParam, signal),
+    queryKey: requestKeys.list(slug, filters),
+    queryFn: ({ pageParam, signal }) =>
+      listRequests(slug, token, pageParam, filterParams(filters), signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled: subscribed,
     // El stream la mantiene al día; solo se vuelve a pedir al reconectar.
     staleTime: Infinity,
+    // Al cambiar un filtro se sigue viendo el resultado anterior hasta que llega el nuevo.
+    placeholderData: keepPreviousData,
   });
 
-  useEffect(
-    () =>
-      openEventStream({
-        url: streamUrl(slug),
-        token,
-        onEvent: (event) => {
-          if (event.event === 'ready') {
-            setSubscribed(true);
-            void queryClient.invalidateQueries({ queryKey: requestKeys.list(slug) });
-            return;
-          }
-          if (event.event === 'cleared') {
-            reset();
-            return;
-          }
-          if (event.event !== 'request') return;
-          const summary = parseSummary(event.data);
-          if (summary) {
-            setLive((current) => addLiveRequest(current, summary));
-          }
-        },
-        onStatus: (status, reason) => {
-          setStream({ status, reason });
-        },
-        onFatalError: (error) => {
-          setFatalError(error);
-        },
-      }),
-    [queryClient, slug, token, reset],
-  );
+  useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    // Una ráfaga de webhooks produce un solo refetch de las listas filtradas.
+    const refreshFilteredLists = () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void queryClient.invalidateQueries({
+          queryKey: requestKeys.lists(slug),
+          predicate: (query) => isFilteredListKey(query.queryKey),
+        });
+      }, FILTERED_REFRESH_DELAY_MS);
+    };
+
+    const close = openEventStream({
+      url: streamUrl(slug),
+      token,
+      onEvent: (event) => {
+        if (event.event === 'ready') {
+          setSubscribed(true);
+          void queryClient.invalidateQueries({ queryKey: requestKeys.lists(slug) });
+          return;
+        }
+        if (event.event === 'cleared') {
+          reset();
+          return;
+        }
+        if (event.event !== 'request') return;
+        const summary = parseSummary(event.data);
+        if (summary) {
+          // Se guarda aunque haya filtros: al quitarlos aparece sin pedir nada.
+          setLive((current) => addLiveRequest(current, summary));
+          refreshFilteredLists();
+        }
+      },
+      onStatus: (status, reason) => {
+        setStream({ status, reason });
+      },
+      onFatalError: (error) => {
+        setFatalError(error);
+      },
+    });
+    return () => {
+      clearTimeout(refreshTimer);
+      close();
+    };
+  }, [queryClient, slug, token, reset]);
 
   const pages = list.data?.pages;
-  const requests = useMemo(
-    () => mergeRequests(live, pages?.flatMap((page) => page.items) ?? []),
-    [live, pages],
-  );
+  const requests = useMemo(() => {
+    const fetched = pages?.flatMap((page) => page.items) ?? [];
+    return filtered ? fetched : mergeRequests(live, fetched);
+  }, [filtered, live, pages]);
 
-  return { requests, list, stream, fatalError, subscribed, generation, reset };
+  return { requests, list, stream, fatalError, subscribed, generation, reset, filtered };
 }
 
 export type RequestFeed = ReturnType<typeof useRequestFeed>;
