@@ -1,8 +1,16 @@
 import type { ReactNode } from 'react';
 import { type HeaderRow, newHeaderRow } from '../lib/headers';
 
-export const inputClass =
-  'w-full rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 outline-none focus:border-emerald-500 aria-invalid:border-rose-500';
+/**
+ * Sin ancho ni tamaño de letra: en Tailwind gana la regla que va después en el CSS, no la
+ * clase que va después en el string, así que `w-full` + `w-32` no se puede sobrescribir.
+ */
+const inputBase =
+  'min-w-0 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-zinc-100 outline-none focus:border-emerald-500 aria-invalid:border-rose-500';
+
+export const inputClass = `${inputBase} w-full text-sm`;
+export const monoInputClass = `${inputBase} w-full font-mono text-xs`;
+export const selectClass = `${inputBase} text-sm`;
 
 interface FieldProps {
   id: string;
@@ -57,7 +65,7 @@ export function HeadersEditor({ rows, onChange, maxRows, error, hint }: HeadersE
               onChange={(event) => {
                 updateRow(row.id, { name: event.target.value });
               }}
-              className={`${inputClass} w-2/5 font-mono text-xs`}
+              className={`${inputBase} w-2/5 font-mono text-xs`}
             />
             <input
               aria-label={`Valor de ${row.name === '' ? 'header' : row.name}`}
@@ -67,7 +75,7 @@ export function HeadersEditor({ rows, onChange, maxRows, error, hint }: HeadersE
               onChange={(event) => {
                 updateRow(row.id, { value: event.target.value });
               }}
-              className={`${inputClass} flex-1 font-mono text-xs`}
+              className={`${inputBase} flex-1 font-mono text-xs`}
             />
             <button
               type="button"

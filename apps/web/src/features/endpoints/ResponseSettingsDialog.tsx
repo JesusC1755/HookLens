@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type SubmitEvent, useEffect, useId, useRef, useState } from 'react';
-import { Field, HeadersEditor, inputClass } from '../../components/form';
+import { Field, HeadersEditor, inputClass, monoInputClass } from '../../components/form';
 import { getEndpoint, updateResponse } from '../../lib/api';
 import type { StoredEndpoint } from '../../lib/storage';
 import type { EndpointDetails, ResponseConfig } from '../../lib/types';
@@ -162,7 +162,7 @@ function ResponseForm({ endpoint, initial, onDone }: ResponseFormProps) {
             update({ body: event.target.value });
           }}
           aria-invalid={errors.body !== undefined}
-          className={`${inputClass} font-mono text-xs`}
+          className={monoInputClass}
         />
       </Field>
 

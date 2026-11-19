@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, type SubmitEvent, useId, useState } from 'react';
-import { Field, HeadersEditor, inputClass } from '../../components/form';
+import { Field, HeadersEditor, inputClass, monoInputClass } from '../../components/form';
 import { createReplay, getReplay, listReplays } from '../../lib/api';
 import { formatTime } from '../../lib/format';
 import type { StoredEndpoint } from '../../lib/storage';
@@ -133,7 +133,7 @@ function ReplayForm({ request, slug, sending, onSend }: ReplayFormProps) {
               update({ targetUrl: event.target.value });
             }}
             aria-invalid={errors.targetUrl !== undefined}
-            className={`${inputClass} font-mono text-xs`}
+            className={monoInputClass}
           />
           <button
             type="submit"
@@ -202,7 +202,7 @@ function ReplayForm({ request, slug, sending, onSend }: ReplayFormProps) {
                   update({ body: event.target.value });
                 }}
                 aria-invalid={errors.body !== undefined}
-                className={`${inputClass} font-mono text-xs`}
+                className={monoInputClass}
               />
             </Field>
           ) : (

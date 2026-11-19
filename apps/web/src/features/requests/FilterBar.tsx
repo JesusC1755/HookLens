@@ -1,4 +1,4 @@
-import { inputClass } from '../../components/form';
+import { inputClass, monoInputClass, selectClass } from '../../components/form';
 import { FILTER_METHODS, headerFilterError, type RequestFilters } from './filters';
 
 interface FilterBarProps {
@@ -33,7 +33,7 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
           onChange={(event) => {
             update({ method: event.target.value });
           }}
-          className={`${inputClass} w-32 shrink-0`}
+          className={`${selectClass} w-32 shrink-0`}
         >
           <option value="">Todos</option>
           {FILTER_METHODS.map((method) => (
@@ -50,7 +50,7 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
           }}
           aria-invalid={headerError !== null}
           title={headerError ?? 'Un header presente, o con un valor exacto'}
-          className={`${inputClass} font-mono text-xs`}
+          className={monoInputClass}
         />
       </div>
       {headerError !== null && <p className="text-xs text-rose-300">{headerError}</p>}
