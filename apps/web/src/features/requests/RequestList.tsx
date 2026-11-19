@@ -115,6 +115,12 @@ export function RequestList({
           </button>
         </div>
       )}
+      {!list.hasNextPage && (
+        <p className="px-4 py-3 text-xs text-zinc-600">
+          Cada endpoint guarda sus últimas 500 requests (hasta 50 MB); las más antiguas se
+          descartan.
+        </p>
+      )}
     </div>
   );
 }

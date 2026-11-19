@@ -87,13 +87,16 @@ function EndpointWorkspace({ endpoint }: { endpoint: StoredEndpoint }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 py-3">
-        <code className="min-w-0 truncate rounded bg-zinc-900 px-2 py-1 font-mono text-sm text-zinc-100">
-          {endpoint.url}
-        </code>
-        <CopyButton value={endpoint.url} label="Copiar URL" />
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-zinc-800 px-4 py-3">
+        {/* En pantallas chicas la URL ocupa su fila (truncada) y las acciones bajan. */}
+        <div className="flex max-w-full min-w-0 items-center gap-2">
+          <code className="min-w-0 truncate rounded bg-zinc-900 px-2 py-1 font-mono text-xs text-zinc-100 sm:text-sm">
+            {endpoint.url}
+          </code>
+          <CopyButton value={endpoint.url} label="Copiar URL" />
+        </div>
         <StreamBadge {...feed.stream} />
-        <span className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <span className="text-xs text-zinc-500">{formatExpiry(endpoint.expiresAt, now)}</span>
           <button
             type="button"
@@ -124,7 +127,7 @@ function EndpointWorkspace({ endpoint }: { endpoint: StoredEndpoint }) {
           >
             {clear.isPending ? 'Vaciando…' : 'Vaciar'}
           </button>
-        </span>
+        </div>
         {clear.isError && (
           <p role="alert" className="w-full text-xs text-rose-300">
             No se pudo vaciar: {clear.error.message}
