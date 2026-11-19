@@ -1,5 +1,6 @@
 import type { FastifyPluginCallback } from 'fastify';
 import type { Database } from '../../db/client.js';
+import type { Limit } from '../../lib/rate-limit.js';
 import { authorizeEndpoint } from './auth.js';
 import {
   normalizeResponseHeaders,
@@ -11,6 +12,7 @@ import { createEndpoint, getEndpointDetails, updateResponseConfig } from './serv
 interface EndpointRoutesOptions {
   db: Database;
   publicBaseUrl: string;
+  createLimit: Limit;
 }
 
 const slugParamsSchema = {
@@ -34,7 +36,7 @@ const responseConfigOutputSchema = {
 
 export const endpointRoutes: FastifyPluginCallback<EndpointRoutesOptions> = (
   app,
-  { db, publicBaseUrl },
+  { db, publicBaseUrl, createLimit },
   done,
 ) => {
   const ingestUrl = (slug: string) => `${publicBaseUrl}/wh/${slug}`;
@@ -42,6 +44,11 @@ export const endpointRoutes: FastifyPluginCallback<EndpointRoutesOptions> = (
   app.post(
     '/api/endpoints',
     {
+      // Sin cuentas, crear endpoints es la puerta de entrada: se limita por IP (la que
+      // resuelve trustProxy, así un cliente no la falsea con X-Forwarded-For).
+      config: {
+        rateLimit: { max: createLimit.max, timeWindow: createLimit.timeWindowMs },
+      },
       schema: {
         response: {
           201: {

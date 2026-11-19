@@ -2,6 +2,7 @@ import type { FastifyPluginCallback } from 'fastify';
 import type { Database } from '../../db/client.js';
 import type { MultiValueMap } from '../../db/types.js';
 import { AppError } from '../../lib/errors.js';
+import { type Limit, tokenOrIpKey } from '../../lib/rate-limit.js';
 import { INGEST_BODY_LIMIT_BYTES } from '../ingest/routes.js';
 import { findOwnedRequest } from '../requests/service.js';
 import { sendRequest } from './client.js';
@@ -14,6 +15,7 @@ export interface ReplayRoutesOptions {
   db: Database;
   isAllowedAddress: AddressPolicy;
   timeoutMs: number;
+  limit: Limit;
 }
 
 interface ReplayBody {
@@ -63,7 +65,7 @@ const replayBodySchema = {
 
 export const replayRoutes: FastifyPluginCallback<ReplayRoutesOptions> = (
   app,
-  { db, isAllowedAddress, timeoutMs },
+  { db, isAllowedAddress, timeoutMs, limit },
   done,
 ) => {
   const lookup = createSafeLookup(isAllowedAddress);
@@ -72,6 +74,11 @@ export const replayRoutes: FastifyPluginCallback<ReplayRoutesOptions> = (
     '/api/requests/:id/replays',
     {
       bodyLimit: ROUTE_BODY_LIMIT,
+      // Por token y no por request: si no, bastaría capturar muchas requests para
+      // multiplicar el límite. Cada replay hace salir una conexión desde el servidor.
+      config: {
+        rateLimit: { max: limit.max, timeWindow: limit.timeWindowMs, keyGenerator: tokenOrIpKey },
+      },
       schema: {
         params: idParamsSchema,
         body: replayBodySchema,

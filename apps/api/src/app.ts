@@ -1,8 +1,10 @@
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type { Database } from './db/client.js';
 import { registerErrorHandling } from './lib/errors.js';
 import { createMemoryPubSub } from './lib/pubsub.js';
+import { DEFAULT_RATE_LIMITS, type RateLimits, rateLimitError } from './lib/rate-limit.js';
 import { endpointRoutes } from './modules/endpoints/routes.js';
 import { ingestRoutes } from './modules/ingest/routes.js';
 import { replayRoutes } from './modules/replays/routes.js';
@@ -29,6 +31,8 @@ export interface AppOptions {
    * por variable de entorno, así que en producción no hay forma de desactivar la protección SSRF.
    */
   replay?: { isAllowedAddress?: AddressPolicy; timeoutMs?: number };
+  /** Solo para tests: los tests crean decenas de endpoints desde la misma IP. */
+  rateLimits?: Partial<RateLimits>;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -42,8 +46,10 @@ export function buildApp({
   corsOrigins = [],
   bus,
   replay = {},
+  rateLimits: rateLimitOverrides = {},
   logger = false,
 }: AppOptions): FastifyInstance {
+  const rateLimits: RateLimits = { ...DEFAULT_RATE_LIMITS, ...rateLimitOverrides };
   const app = Fastify({
     logger,
     bodyLimit: API_BODY_LIMIT_BYTES,
@@ -58,6 +64,10 @@ export function buildApp({
 
   registerErrorHandling(app);
 
+  // Antes que las rutas: el plugin engancha cada ruta que declare `config.rateLimit`
+  // al registrarse. Sin límite global; cada ruta elige el suyo.
+  void app.register(rateLimit, { global: false, errorResponseBuilder: rateLimitError });
+
   void app.register(healthRoutes, { db });
 
   // CORS encapsulado en la API de gestión. Si fuera global, su manejo de preflight
@@ -69,17 +79,22 @@ export function buildApp({
       allowedHeaders: ['authorization', 'content-type'],
       maxAge: 600,
     });
-    await api.register(endpointRoutes, { db, publicBaseUrl });
+    await api.register(endpointRoutes, {
+      db,
+      publicBaseUrl,
+      createLimit: rateLimits.createEndpoint,
+    });
     await api.register(requestRoutes, { db, bus: endpointBus });
     await api.register(streamRoutes, { db, bus: endpointBus });
     await api.register(replayRoutes, {
       db,
       isAllowedAddress: replay.isAllowedAddress ?? isPublicAddress,
       timeoutMs: replay.timeoutMs ?? REPLAY_TIMEOUT_MS,
+      limit: rateLimits.replay,
     });
   });
 
-  void app.register(ingestRoutes, { db, bus: endpointBus });
+  void app.register(ingestRoutes, { db, bus: endpointBus, limit: rateLimits.ingest });
 
   return app;
 }

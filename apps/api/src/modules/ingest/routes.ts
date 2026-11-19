@@ -1,12 +1,14 @@
 import { setTimeout as sleep } from 'node:timers/promises';
+import type { RateLimitPluginOptions } from '@fastify/rate-limit';
 import type { FastifyPluginCallback, FastifyReply, FastifyRequest } from 'fastify';
 import type { Database } from '../../db/client.js';
 import { AppError } from '../../lib/errors.js';
+import type { Limit } from '../../lib/rate-limit.js';
 import { SLUG_PATTERN } from '../../lib/tokens.js';
 import { findEndpointForIngest } from '../endpoints/service.js';
 import type { EndpointBus } from '../requests/events.js';
 import { normalizeHeaders, normalizeIp, parseIngestUrl } from './normalize.js';
-import { recordRequest } from './service.js';
+import { recordRequest, trimRequests } from './service.js';
 
 export const INGEST_BODY_LIMIT_BYTES = 1024 * 1024;
 
@@ -26,6 +28,7 @@ interface IngestRoutesOptions {
   db: Database;
   /** La ingesta solo publica: no sabe quién escucha (SSE, CLI…). */
   bus: Pick<EndpointBus, 'publish'>;
+  limit: Limit;
 }
 
 type IngestRequest = FastifyRequest<{ Params: { slug: string } }>;
@@ -36,7 +39,7 @@ type IngestRequest = FastifyRequest<{ Params: { slug: string } }>;
  */
 export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (
   app,
-  { db, bus },
+  { db, bus, limit },
   done,
 ) => {
   // Cualquier content-type, incluso ausente, llega al handler como Buffer sin tocar.
@@ -79,6 +82,7 @@ export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (
       sizeBytes: body?.length ?? 0,
       ip: normalizeIp(request.ip),
     });
+    await trimRequests(db, endpoint.id);
     // Se publica después del insert: quien reciba el evento ya puede pedir el detalle.
     bus.publish(slug, { type: 'request', request: summary });
 
@@ -96,9 +100,35 @@ export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (
       .send(Buffer.from(endpoint.respBody, 'utf8'));
   };
 
-  const routeOptions = { bodyLimit: INGEST_BODY_LIMIT_BYTES };
-  app.all('/wh/:slug', routeOptions, handler);
-  app.all('/wh/:slug/*', routeOptions, handler);
+  const limiterOptions: RateLimitPluginOptions = {
+    max: limit.max,
+    timeWindow: limit.timeWindowMs,
+    // Por slug: la ingesta es pública y muchos emisores comparten IP (GitHub, Stripe).
+    keyGenerator: (request) => `slug:${(request.params as { slug: string }).slug}`,
+    // Sin x-ratelimit-* en las respuestas normales: el emisor debe recibir exactamente
+    // la respuesta configurada. Al exceder, solo retry-after. (Las opciones reemplazan
+    // el objeto entero, por eso van todas las claves.)
+    addHeadersOnExceeding: {
+      'x-ratelimit-limit': false,
+      'x-ratelimit-remaining': false,
+      'x-ratelimit-reset': false,
+    },
+    addHeaders: {
+      'x-ratelimit-limit': false,
+      'x-ratelimit-remaining': false,
+      'x-ratelimit-reset': false,
+      'retry-after': true,
+    },
+  };
+  const routeOptions = {
+    bodyLimit: INGEST_BODY_LIMIT_BYTES,
+    // Un solo limitador para las dos rutas: con `config.rateLimit` por ruta, el almacén
+    // en memoria crea un contador por ruta y /wh/x y /wh/x/algo tendrían el doble de cupo.
+    // Va en onRequest: una request rechazada no llega a leerse (hasta 1 MB) ni a tocar la base.
+    onRequest: app.rateLimit(limiterOptions),
+  };
+  app.all<{ Params: { slug: string } }>('/wh/:slug', routeOptions, handler);
+  app.all<{ Params: { slug: string } }>('/wh/:slug/*', routeOptions, handler);
 
   done();
 };
