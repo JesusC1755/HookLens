@@ -189,6 +189,7 @@ function EndpointWorkspace({ endpoint }: { endpoint: StoredEndpoint }) {
             onClearFilters={() => {
               setFilterDraft(EMPTY_FILTERS);
             }}
+            retention={details.data?.retention}
           />
         </aside>
         <section className={`min-h-0 flex-col lg:flex ${panelOpen ? 'flex' : 'hidden'}`}>

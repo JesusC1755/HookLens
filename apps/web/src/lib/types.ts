@@ -77,4 +77,11 @@ export interface EndpointDetails {
   createdAt: string;
   expiresAt: string;
   response: ResponseConfig;
+  retention: Retention;
+}
+
+/** Topes por endpoint: al llegar una request nueva, se borran las más antiguas que sobren. */
+export interface Retention {
+  maxRequests: number;
+  maxBytes: number;
 }

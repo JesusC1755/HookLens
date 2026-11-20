@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { CopyButton } from '../../components/CopyButton';
 import { formatBytes, formatDateTime, formatTime } from '../../lib/format';
+import type { Retention } from '../../lib/types';
 import { MethodBadge } from './MethodBadge';
 import type { RequestFeed } from './useRequestFeed';
 
@@ -12,6 +13,8 @@ interface RequestListProps {
   compareIds: readonly string[];
   onToggleCompare: (id: string) => void;
   onClearFilters: () => void;
+  /** Llega con el detalle del endpoint; mientras carga, el aviso no se muestra. */
+  retention: Retention | undefined;
 }
 
 export function RequestList({
@@ -22,6 +25,7 @@ export function RequestList({
   compareIds,
   onToggleCompare,
   onClearFilters,
+  retention,
 }: RequestListProps) {
   const { requests, list, subscribed, filtered } = feed;
 
@@ -115,10 +119,10 @@ export function RequestList({
           </button>
         </div>
       )}
-      {!list.hasNextPage && (
+      {!list.hasNextPage && retention !== undefined && (
         <p className="px-4 py-3 text-xs text-zinc-600">
-          Cada endpoint guarda sus últimas 500 requests (hasta 50 MB); las más antiguas se
-          descartan.
+          Cada endpoint guarda sus últimas {retention.maxRequests} requests (hasta{' '}
+          {formatBytes(retention.maxBytes)}); las más antiguas se descartan.
         </p>
       )}
     </div>
