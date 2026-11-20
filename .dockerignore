@@ -1,0 +1,12 @@
+# Contexto de build del API (se construye desde la raíz). Fuera todo lo que no necesita:
+# imagen más rápida de construir y sin secretos locales dentro.
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+.git
+.github
+.claude
+apps/web
+docker
