@@ -18,6 +18,10 @@ const app = buildApp({
   replay: {
     isAllowedAddress: env.REPLAY_ALLOW_LOOPBACK ? withLoopback(isPublicAddress) : isPublicAddress,
   },
+  retention: {
+    maxRequests: env.RETENTION_MAX_REQUESTS,
+    maxBytes: env.RETENTION_MAX_MB * 1024 * 1024,
+  },
   logger: { level: env.LOG_LEVEL },
 });
 
@@ -27,9 +31,13 @@ if (env.REPLAY_ALLOW_LOOPBACK) {
   );
 }
 
-// Una pasada al arrancar y luego cada 10 minutos. La ingesta ya rechaza los vencidos
-// con 410; el job solo libera el espacio.
-const expirationJob = startExpirationJob({ db, log: app.log, intervalMs: 10 * 60_000 });
+// Una pasada al arrancar y luego cada EXPIRATION_INTERVAL_MINUTES. La ingesta ya rechaza
+// los vencidos con 410; el job solo libera el espacio.
+const expirationJob = startExpirationJob({
+  db,
+  log: app.log,
+  intervalMs: env.EXPIRATION_INTERVAL_MINUTES * 60_000,
+});
 
 app.addHook('onClose', async () => {
   // En este orden: si el pool se cierra con una pasada en curso, esa pasada falla.

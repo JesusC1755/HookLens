@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { endpoints, requests } from '../src/db/schema.js';
-import { RETENTION, trimRequests } from '../src/modules/ingest/service.js';
+import { DEFAULT_RETENTION, trimRequests } from '../src/modules/ingest/service.js';
 import { buildTestApp, createEndpoint, type TestEndpoint } from './helpers/app.js';
 import { createTestDb, resetDb } from './helpers/db.js';
 
@@ -88,15 +88,32 @@ describe('trimRequests', () => {
     expect(await db.$count(requests)).toBe(2);
   });
 
-  it('la ingesta aplica el tope de producción en cada request', async () => {
-    await seed(Array.from({ length: RETENTION.maxRequests }, () => 0));
+  it('la ingesta aplica el tope por defecto en cada request', async () => {
+    await seed(Array.from({ length: DEFAULT_RETENTION.maxRequests }, () => 0));
 
     const res = await app.inject({ method: 'POST', url: `/wh/${owner.slug}/nueva` });
 
     expect(res.statusCode).toBe(200);
     const paths = await remainingPaths();
-    expect(paths).toHaveLength(RETENTION.maxRequests);
+    expect(paths).toHaveLength(DEFAULT_RETENTION.maxRequests);
     expect(paths[0]).toBe('/1');
     expect(paths.at(-1)).toBe('/nueva');
+  });
+
+  it('la ingesta y el detalle del endpoint usan la retención configurada', async () => {
+    const retention = { maxRequests: 2, maxBytes: 1000 };
+    const configured = buildTestApp(db, { retention });
+    await seed([1, 1]);
+
+    await configured.inject({ method: 'POST', url: `/wh/${owner.slug}/nueva` });
+    const details = await configured.inject({
+      method: 'GET',
+      url: `/api/endpoints/${owner.slug}`,
+      headers: owner.auth,
+    });
+
+    expect(await remainingPaths()).toEqual(['/1', '/nueva']);
+    expect(details.json()).toMatchObject({ retention });
+    await configured.close();
   });
 });

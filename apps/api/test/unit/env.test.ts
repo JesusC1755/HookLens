@@ -91,6 +91,35 @@ describe('loadEnv', () => {
     );
   });
 
+  it('retención y expiración tienen defaults de desarrollo y se pueden bajar', () => {
+    expect(loadEnv({ DATABASE_URL })).toMatchObject({
+      RETENTION_MAX_REQUESTS: 500,
+      RETENTION_MAX_MB: 50,
+      EXPIRATION_INTERVAL_MINUTES: 10,
+    });
+    expect(
+      loadEnv({
+        DATABASE_URL,
+        RETENTION_MAX_REQUESTS: '100',
+        RETENTION_MAX_MB: '5',
+        EXPIRATION_INTERVAL_MINUTES: '60',
+      }),
+    ).toMatchObject({
+      RETENTION_MAX_REQUESTS: 100,
+      RETENTION_MAX_MB: 5,
+      EXPIRATION_INTERVAL_MINUTES: 60,
+    });
+  });
+
+  it.each([
+    ['RETENTION_MAX_REQUESTS', '0'],
+    ['RETENTION_MAX_REQUESTS', '2.5'],
+    ['RETENTION_MAX_MB', 'cinco'],
+    ['EXPIRATION_INTERVAL_MINUTES', '0'],
+  ])('rechaza %s=%s', (name, value) => {
+    expect(() => loadEnv({ DATABASE_URL, [name]: value })).toThrow(new RegExp(name));
+  });
+
   it('rechaza una DATABASE_URL que no es de Postgres', () => {
     expect(() => loadEnv({ DATABASE_URL: 'mysql://u:p@localhost/db' })).toThrow(/DATABASE_URL/);
   });

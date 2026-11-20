@@ -54,6 +54,13 @@ const EnvSchema = z
     TRUST_PROXY: commaList(isTrustedProxyEntry, 'Debe ser una IP, un CIDR o un alias'),
     // Orígenes del front autorizados a llamar a /api desde el navegador.
     CORS_ORIGINS: commaList(isOrigin, 'Debe ser un origen como https://app.ejemplo.com'),
+    // Retención por endpoint: en producción se baja para caber en el almacenamiento del
+    // plan de la base (p. ej. 1 GB en Neon gratis). Los defaults son los de desarrollo.
+    RETENTION_MAX_REQUESTS: z.coerce.number().int().min(1).max(10_000).default(500),
+    RETENTION_MAX_MB: z.coerce.number().int().min(1).max(1024).default(50),
+    // Cada cuánto se borran los endpoints vencidos. Cada pasada despierta a la base; la
+    // ingesta y la API ya los tratan como vencidos (410) en el momento exacto.
+    EXPIRATION_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(10),
     // Solo desarrollo: deja que el replay llegue a localhost. "true" o "false", nada más,
     // para que un valor ambiguo ("1", "yes") no la active por accidente.
     REPLAY_ALLOW_LOOPBACK: z

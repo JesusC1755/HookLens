@@ -1,6 +1,7 @@
 import type { FastifyPluginCallback } from 'fastify';
 import type { Database } from '../../db/client.js';
 import type { Limit } from '../../lib/rate-limit.js';
+import type { Retention } from '../ingest/service.js';
 import { authorizeEndpoint } from './auth.js';
 import {
   normalizeResponseHeaders,
@@ -13,6 +14,8 @@ interface EndpointRoutesOptions {
   db: Database;
   publicBaseUrl: string;
   createLimit: Limit;
+  /** Se informa al front para que el aviso de retención diga los topes reales. */
+  retention: Retention;
 }
 
 const slugParamsSchema = {
@@ -36,7 +39,7 @@ const responseConfigOutputSchema = {
 
 export const endpointRoutes: FastifyPluginCallback<EndpointRoutesOptions> = (
   app,
-  { db, publicBaseUrl, createLimit },
+  { db, publicBaseUrl, createLimit, retention },
   done,
 ) => {
   const ingestUrl = (slug: string) => `${publicBaseUrl}/wh/${slug}`;
@@ -92,8 +95,17 @@ export const endpointRoutes: FastifyPluginCallback<EndpointRoutesOptions> = (
               createdAt: { type: 'string', format: 'date-time' },
               expiresAt: { type: 'string', format: 'date-time' },
               response: responseConfigOutputSchema,
+              retention: {
+                type: 'object',
+                properties: {
+                  maxRequests: { type: 'integer' },
+                  maxBytes: { type: 'integer' },
+                },
+                required: ['maxRequests', 'maxBytes'],
+                additionalProperties: false,
+              },
             },
-            required: ['slug', 'url', 'createdAt', 'expiresAt', 'response'],
+            required: ['slug', 'url', 'createdAt', 'expiresAt', 'response', 'retention'],
             additionalProperties: false,
           },
         },
@@ -112,6 +124,7 @@ export const endpointRoutes: FastifyPluginCallback<EndpointRoutesOptions> = (
         createdAt: details.createdAt.toISOString(),
         expiresAt: details.expiresAt.toISOString(),
         response: details.response,
+        retention,
       };
     },
   );

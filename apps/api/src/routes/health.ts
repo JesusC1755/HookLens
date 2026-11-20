@@ -6,7 +6,30 @@ interface HealthRoutesOptions {
   db: Database;
 }
 
+/**
+ * Dos chequeos distintos:
+ * - `/health/live` (liveness): el proceso responde. No toca la base, así un monitor que
+ *   lo consulte seguido no impide que Postgres se suspenda (Neon cobra por tiempo despierta).
+ * - `/health` (readiness): además, la base responde. Para diagnóstico; reiniciar el API
+ *   no arregla una base caída, por eso no se usa para decidir reinicios.
+ */
 export const healthRoutes: FastifyPluginCallback<HealthRoutesOptions> = (app, { db }, done) => {
+  app.get(
+    '/health/live',
+    {
+      schema: {
+        response: {
+          200: {
+            type: 'object',
+            properties: { status: { const: 'ok' } },
+            required: ['status'],
+          },
+        },
+      },
+    },
+    () => ({ status: 'ok' }),
+  );
+
   app.get(
     '/health',
     {

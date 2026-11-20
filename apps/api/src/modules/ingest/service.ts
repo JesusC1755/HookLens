@@ -4,11 +4,16 @@ import { requests } from '../../db/schema.js';
 import { type RequestSummary, summaryColumns, toSummary } from '../requests/serializers.js';
 
 /**
- * Cada endpoint guarda sus últimas 500 requests y hasta 50 MB. Sin tope, una sola URL
- * pública (1 MB por request) podría llenar el disco; con él, la búsqueda sin índice
- * GIN se mantiene acotada.
+ * Cuántas requests guarda cada endpoint. Sin tope, una sola URL pública (1 MB por
+ * request) podría llenar el disco; con él, la búsqueda sin índice GIN se mantiene acotada.
  */
-export const RETENTION = { maxRequests: 500, maxBytes: 50 * 1024 * 1024 };
+export interface Retention {
+  maxRequests: number;
+  maxBytes: number;
+}
+
+/** Por defecto; en producción se baja por env para caber en el almacenamiento del plan. */
+export const DEFAULT_RETENTION: Retention = { maxRequests: 500, maxBytes: 50 * 1024 * 1024 };
 
 /**
  * Borra las más antiguas que pasen cualquiera de los dos topes. La más reciente se
@@ -18,7 +23,7 @@ export const RETENTION = { maxRequests: 500, maxBytes: 50 * 1024 * 1024 };
 export async function trimRequests(
   db: Database,
   endpointId: string,
-  { maxRequests, maxBytes } = RETENTION,
+  { maxRequests, maxBytes }: Retention,
 ): Promise<number> {
   const result = await db.execute(sql`
     DELETE FROM ${requests}

@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ResponseConfig } from '../src/modules/endpoints/response-config.js';
+import { DEFAULT_RETENTION } from '../src/modules/ingest/service.js';
 import {
   buildTestApp,
   createEndpoint,
@@ -53,6 +54,7 @@ describe('GET /api/endpoints/:slug', () => {
       slug: owner.slug,
       url: `${TEST_BASE_URL}/wh/${owner.slug}`,
       response: { status: 200, headers: {}, body: '', delayMs: 0 },
+      retention: DEFAULT_RETENTION,
     });
     expect(res.json()).not.toHaveProperty('ownerTokenHash');
   });

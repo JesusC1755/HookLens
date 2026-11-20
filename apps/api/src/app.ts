@@ -7,6 +7,7 @@ import { createMemoryPubSub } from './lib/pubsub.js';
 import { DEFAULT_RATE_LIMITS, type RateLimits, rateLimitError } from './lib/rate-limit.js';
 import { endpointRoutes } from './modules/endpoints/routes.js';
 import { ingestRoutes } from './modules/ingest/routes.js';
+import { DEFAULT_RETENTION, type Retention } from './modules/ingest/service.js';
 import { replayRoutes } from './modules/replays/routes.js';
 import { type AddressPolicy, isPublicAddress } from './modules/replays/ssrf.js';
 import { requestRoutes } from './modules/requests/routes.js';
@@ -33,6 +34,8 @@ export interface AppOptions {
   replay?: { isAllowedAddress?: AddressPolicy; timeoutMs?: number };
   /** Solo para tests: los tests crean decenas de endpoints desde la misma IP. */
   rateLimits?: Partial<RateLimits>;
+  /** Cuántas requests guarda cada endpoint; las más antiguas se borran al llegar nuevas. */
+  retention?: Retention;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -47,6 +50,7 @@ export function buildApp({
   bus,
   replay = {},
   rateLimits: rateLimitOverrides = {},
+  retention = DEFAULT_RETENTION,
   logger = false,
 }: AppOptions): FastifyInstance {
   const rateLimits: RateLimits = { ...DEFAULT_RATE_LIMITS, ...rateLimitOverrides };
@@ -83,6 +87,7 @@ export function buildApp({
       db,
       publicBaseUrl,
       createLimit: rateLimits.createEndpoint,
+      retention,
     });
     await api.register(requestRoutes, { db, bus: endpointBus });
     await api.register(streamRoutes, { db, bus: endpointBus });
@@ -94,7 +99,12 @@ export function buildApp({
     });
   });
 
-  void app.register(ingestRoutes, { db, bus: endpointBus, limit: rateLimits.ingest });
+  void app.register(ingestRoutes, {
+    db,
+    bus: endpointBus,
+    limit: rateLimits.ingest,
+    retention,
+  });
 
   return app;
 }

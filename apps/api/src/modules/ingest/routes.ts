@@ -8,7 +8,7 @@ import { SLUG_PATTERN } from '../../lib/tokens.js';
 import { findEndpointForIngest } from '../endpoints/service.js';
 import type { EndpointBus } from '../requests/events.js';
 import { normalizeHeaders, normalizeIp, parseIngestUrl } from './normalize.js';
-import { recordRequest, trimRequests } from './service.js';
+import { recordRequest, type Retention, trimRequests } from './service.js';
 
 export const INGEST_BODY_LIMIT_BYTES = 1024 * 1024;
 
@@ -29,6 +29,7 @@ interface IngestRoutesOptions {
   /** La ingesta solo publica: no sabe quién escucha (SSE, CLI…). */
   bus: Pick<EndpointBus, 'publish'>;
   limit: Limit;
+  retention: Retention;
 }
 
 type IngestRequest = FastifyRequest<{ Params: { slug: string } }>;
@@ -39,7 +40,7 @@ type IngestRequest = FastifyRequest<{ Params: { slug: string } }>;
  */
 export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (
   app,
-  { db, bus, limit },
+  { db, bus, limit, retention },
   done,
 ) => {
   // Cualquier content-type, incluso ausente, llega al handler como Buffer sin tocar.
@@ -82,7 +83,7 @@ export const ingestRoutes: FastifyPluginCallback<IngestRoutesOptions> = (
       sizeBytes: body?.length ?? 0,
       ip: normalizeIp(request.ip),
     });
-    await trimRequests(db, endpoint.id);
+    await trimRequests(db, endpoint.id, retention);
     // Se publica después del insert: quien reciba el evento ya puede pedir el detalle.
     bus.publish(slug, { type: 'request', request: summary });
 

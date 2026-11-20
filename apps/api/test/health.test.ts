@@ -29,3 +29,18 @@ describe('GET /health', () => {
     await unreachable.pool.end();
   });
 });
+
+describe('GET /health/live', () => {
+  it('responde 200 sin consultar la base, aunque esté caída', async () => {
+    const unreachable = createDb(UNREACHABLE_DATABASE_URL);
+    const app = buildTestApp(unreachable.db);
+
+    const res = await app.inject({ method: 'GET', url: '/health/live' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: 'ok' });
+    expect(unreachable.pool.totalCount).toBe(0);
+    await app.close();
+    await unreachable.pool.end();
+  });
+});
