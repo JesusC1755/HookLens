@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Solo lectura: el workflow no publica nada ni escribe en el repo.
+permissions:
+  contents: read
+
+# Un push nuevo a la misma rama cancela la corrida anterior, que ya no importa.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Formato, lint, tipos, tests y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Postgres real, la misma versión que Docker Compose: los tests del API dependen de
+    # bytea, JSONB, funciones de ventana y advisory locks, que un mock no reproduce.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: hooklens
+          POSTGRES_PASSWORD: hooklens
+          POSTGRES_DB: hooklens_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hooklens -d hooklens_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL_TEST: postgres://hooklens:hooklens@localhost:5432/hooklens_test
+      # El build del front la exige; aquí solo importa que compile.
+      VITE_API_URL: http://localhost:3001
+    steps:
+      - uses: actions/checkout@v5
+      # Sin `version`: toma la de `packageManager` en package.json.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  docker:
+    name: Imagen del API
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Que el Dockerfile siga construyendo: si se rompe, se sabe aquí y no en el deploy.
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -f apps/api/Dockerfile -t hooklens-api:ci .
