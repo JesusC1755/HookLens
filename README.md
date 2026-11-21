@@ -179,3 +179,7 @@ apps/web            SPA React
   src/lib/            cliente HTTP, cliente SSE, formateadores
 .github/workflows   CI
 ```
+
+## Licencia
+
+[MIT](LICENSE)
