@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CLOUDFLARE_RANGES } from '../../src/config/cloudflare.js';
 import { loadEnv } from '../../src/config/env.js';
 
 const DATABASE_URL = 'postgres://u:p@localhost:5432/db';
@@ -23,6 +24,30 @@ describe('loadEnv', () => {
     'rechaza TRUST_PROXY=%s',
     (value) => {
       expect(() => loadEnv({ DATABASE_URL, TRUST_PROXY: value })).toThrow(/TRUST_PROXY/);
+    },
+  );
+
+  it('expande el alias cloudflare a sus rangos oficiales', () => {
+    const env = loadEnv({ DATABASE_URL, TRUST_PROXY: 'loopback,cloudflare' });
+
+    expect(env.TRUST_PROXY).toEqual(['loopback', ...CLOUDFLARE_RANGES]);
+    expect(env.TRUST_PROXY).toContain('104.16.0.0/13');
+    expect(env.TRUST_PROXY).toContain('2606:4700::/32');
+  });
+
+  it('quita espacios pegados por error a las URLs', () => {
+    const env = loadEnv({
+      DATABASE_URL: ` ${DATABASE_URL} `,
+      PUBLIC_BASE_URL: ' https://api.hooklens.dev ',
+    });
+    expect(env.DATABASE_URL).toBe(DATABASE_URL);
+    expect(env.PUBLIC_BASE_URL).toBe('https://api.hooklens.dev');
+  });
+
+  it.each(['api.hooklens.dev', '"https://api.hooklens.dev"', '9bd8c9cbf32de4035f2ab22faa51894a'])(
+    'rechaza PUBLIC_BASE_URL=%s',
+    (value) => {
+      expect(() => loadEnv({ DATABASE_URL, PUBLIC_BASE_URL: value })).toThrow(/PUBLIC_BASE_URL/);
     },
   );
 

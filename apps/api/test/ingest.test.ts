@@ -1,11 +1,12 @@
 import { desc, eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
+import { loadEnv } from '../src/config/env.js';
 import { createDb } from '../src/db/client.js';
 import { endpoints, requests } from '../src/db/schema.js';
 import { INGEST_BODY_LIMIT_BYTES } from '../src/modules/ingest/routes.js';
 import { buildTestApp, TEST_BASE_URL } from './helpers/app.js';
-import { createTestDb, resetDb, UNREACHABLE_DATABASE_URL } from './helpers/db.js';
+import { createTestDb, resetDb, testDatabaseUrl, UNREACHABLE_DATABASE_URL } from './helpers/db.js';
 
 const handle = createTestDb();
 const { db } = handle;
@@ -170,6 +171,27 @@ describe('ingesta: método, path, query, headers e IP', () => {
       url: `/wh/${slug}`,
       headers: { 'x-forwarded-for': '203.0.113.9' },
       remoteAddress: peer,
+    });
+
+    expect((await lastRequest()).ip).toBe(expectedIp);
+    await proxied.close();
+  });
+
+  // La cadena real de Render: cliente → Cloudflare → balanceador interno → proxy local.
+  // El cliente antepone una IP falsa; Cloudflare agrega la real a su derecha.
+  it.each([
+    ['loopback,uniquelocal,cloudflare', '203.0.113.9'],
+    ['loopback,uniquelocal', '104.23.1.1'],
+    ['uniquelocal', '127.0.0.1'],
+  ])('detrás de Render con TRUST_PROXY=%s la IP es %s', async (trustProxy, expectedIp) => {
+    const { TRUST_PROXY } = loadEnv({ DATABASE_URL: testDatabaseUrl(), TRUST_PROXY: trustProxy });
+    const proxied = buildApp({ db, publicBaseUrl: TEST_BASE_URL, trustProxy: TRUST_PROXY });
+
+    await proxied.inject({
+      method: 'POST',
+      url: `/wh/${slug}`,
+      headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9, 104.23.1.1, 10.30.0.5' },
+      remoteAddress: '127.0.0.1',
     });
 
     expect((await lastRequest()).ip).toBe(expectedIp);

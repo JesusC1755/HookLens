@@ -1,13 +1,17 @@
 import { isIP } from 'node:net';
 import { z } from 'zod';
+import { CLOUDFLARE_RANGES } from './cloudflare.js';
 
 // Alias que entiende proxy-addr (el resolvedor de IPs que usa Fastify).
 const PROXY_ALIASES = new Set(['loopback', 'linklocal', 'uniquelocal']);
 
+// Alias propios: se expanden a sus rangos antes de pasarlos a Fastify.
+const RANGE_ALIASES: Record<string, readonly string[]> = { cloudflare: CLOUDFLARE_RANGES };
+
 const DEV_WEB_ORIGIN = 'http://localhost:5173';
 
 function isTrustedProxyEntry(entry: string): boolean {
-  if (PROXY_ALIASES.has(entry)) return true;
+  if (PROXY_ALIASES.has(entry) || Object.hasOwn(RANGE_ALIASES, entry)) return true;
   const [address = '', prefix, ...rest] = entry.split('/');
   const version = isIP(address);
   if (version === 0 || rest.length > 0) return false;
@@ -45,13 +49,23 @@ const EnvSchema = z
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
-    DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+    // trim: un espacio pegado por error en el panel del host no debe colarse en las URLs.
+    DATABASE_URL: z
+      .string()
+      .trim()
+      .pipe(z.url({ protocol: /^postgres(ql)?$/ })),
     // URL pública con la que se construyen las URLs de ingesta que ve el usuario.
-    PUBLIC_BASE_URL: z.url({ protocol: /^https?$/ }).optional(),
+    PUBLIC_BASE_URL: z
+      .string()
+      .trim()
+      .pipe(z.url({ protocol: /^https?$/ }))
+      .optional(),
     // Direcciones de los proxies de confianza (vacío = ninguno). Se exigen direcciones
     // y no un número de saltos: con saltos, un cliente directo podría falsear
-    // X-Forwarded-For (Fastify 5 ya ni lo acepta).
-    TRUST_PROXY: commaList(isTrustedProxyEntry, 'Debe ser una IP, un CIDR o un alias'),
+    // X-Forwarded-For (Fastify 5 ya ni lo acepta). `cloudflare` se expande a sus rangos.
+    TRUST_PROXY: commaList(isTrustedProxyEntry, 'Debe ser una IP, un CIDR o un alias').transform(
+      (entries) => entries.flatMap((entry) => RANGE_ALIASES[entry] ?? [entry]),
+    ),
     // Orígenes del front autorizados a llamar a /api desde el navegador.
     CORS_ORIGINS: commaList(isOrigin, 'Debe ser un origen como https://app.ejemplo.com'),
     // Retención por endpoint: en producción se baja para caber en el almacenamiento del
